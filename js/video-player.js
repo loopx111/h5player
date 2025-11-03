@@ -640,10 +640,16 @@ class VideoPlayer {
                             console.log('文件创建成功，开始写入数据...');
                             fileEntry.createWriter((writer) => {
                                 writer.onwriteend = () => {
-                                    // 返回文件URL
-                                    const fileUrl = fileEntry.toLocalURL();
-                                    console.log('文件已保存到App文件系统:', fileUrl, '文件名:', fileName, '文件大小:', blob.size);
-                                    resolve(fileUrl);
+                                    try {
+                                        // 返回文件URL
+                                        const fileUrl = fileEntry.toLocalURL();
+                                        console.log('文件已保存到App文件系统:', fileUrl, '文件名:', fileName, '文件大小:', blob.size);
+                                        resolve(fileUrl);
+                                    } catch (writeEndError) {
+                                        console.error('文件写入完成回调异常:', writeEndError);
+                                        console.error('写入完成异常详情:', writeEndError.message, writeEndError.stack);
+                                        reject(writeEndError);
+                                    }
                                 };
                                 writer.onerror = (e) => {
                                     console.error('文件写入失败:', e);
@@ -656,8 +662,32 @@ class VideoPlayer {
                                 const reader = new FileReader();
                                 reader.onload = () => {
                                     console.log('Blob转换完成，开始写入文件...');
-                                    writer.write(new Uint8Array(reader.result));
-                                    console.log('文件数据写入完成');
+                                    try {
+                                        console.log('写入前检查: writer状态:', writer.readyState, 'ArrayBuffer大小:', reader.result.byteLength);
+                                        
+                                        // 检查writer是否可用
+                                        if (writer.readyState === writer.DONE) {
+                                            console.error('文件写入器状态异常，已处于DONE状态');
+                                            reject(new Error('文件写入器不可用'));
+                                            return;
+                                        }
+                                        
+                                        // 使用setTimeout避免可能的异步执行错误
+                                        setTimeout(() => {
+                                            try {
+                                                writer.write(new Uint8Array(reader.result));
+                                                console.log('文件数据写入完成');
+                                            } catch (writeError) {
+                                                console.error('文件写入异常:', writeError);
+                                                console.error('写入异常详情:', writeError.message, writeError.stack);
+                                                reject(writeError);
+                                            }
+                                        }, 0);
+                                    } catch (writeError) {
+                                        console.error('文件写入异常:', writeError);
+                                        console.error('写入异常详情:', writeError.message, writeError.stack);
+                                        reject(writeError);
+                                    }
                                 };
                                 reader.onerror = (error) => {
                                     console.error('Blob转换失败:', error);
