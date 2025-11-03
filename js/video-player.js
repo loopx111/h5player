@@ -571,13 +571,39 @@ class VideoPlayer {
             
             let localUrl;
             
-            // 根据环境选择存储方式
-            if (this.isAppEnvironment()) {
-                // App环境：保存到文件系统
-                localUrl = await this.saveToAppFileSystem(fileId, blob, downloadUrl);
+            // 使用独立的文件写入模块
+            if (window.fileWriter) {
+                console.log('使用FileWriter模块保存文件');
+                
+                // 从下载URL中提取原始文件名
+                let fileName = fileId;
+                try {
+                    const url = new URL(downloadUrl);
+                    const pathParts = url.pathname.split('/');
+                    const originalFileName = pathParts[pathParts.length - 1];
+                    if (originalFileName && originalFileName.includes('.')) {
+                        fileName = originalFileName;
+                        console.log('使用原始文件名:', fileName);
+                    }
+                } catch (e) {
+                    console.log('无法从URL提取文件名，使用fileId:', fileId);
+                }
+                
+                // 确保文件名有扩展名
+                if (!fileName.includes('.')) {
+                    fileName += '.mp4'; // 默认扩展名
+                }
+                
+                localUrl = await window.fileWriter.saveFile(fileName, blob, fileId);
             } else {
-                // 浏览器环境：使用Blob URL
-                localUrl = URL.createObjectURL(blob);
+                // 回退到原来的逻辑
+                console.warn('FileWriter模块未找到，使用回退方案');
+                
+                if (this.isAppEnvironment()) {
+                    localUrl = await this.saveToAppFileSystem(fileId, blob, downloadUrl);
+                } else {
+                    localUrl = URL.createObjectURL(blob);
+                }
             }
             
             // 保存到本地映射
