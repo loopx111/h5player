@@ -52,7 +52,7 @@ class AdScreenPlayer {
         this.modules.monitor = new PerformanceMonitor();
         
         // 初始化视频播放器
-        this.modules.videoPlayer = new VideoPlayer();
+        this.modules.videoPlayer = new window.VideoPlayer();
         
         console.log('所有模块初始化完成');
     }
