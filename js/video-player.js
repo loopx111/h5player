@@ -705,6 +705,17 @@ class VideoPlayer {
                                 this.saveFileWithAlternativeMethod(fileName, arrayBuffer).then(resolve).catch(reject);
                             };
                             
+                            // 添加写入超时监控
+                            const writeTimeout = setTimeout(() => {
+                                console.error('✗ 文件写入超时（10秒），触发备用方案');
+                                writer.onwrite = null; // 防止重复触发
+                                writer.onerror = null;
+                                
+                                // 强制触发备用方法
+                                console.log('强制切换到备用写入方案...');
+                                this.saveFileWithAlternativeMethod(fileName, arrayBuffer).then(resolve).catch(reject);
+                            }, 10000);
+                            
                             // 创建Blob并写入
                             const writeBlob = new Blob([new Uint8Array(arrayBuffer)]);
                             console.log('开始写入文件数据，大小:', writeBlob.size);
@@ -712,6 +723,26 @@ class VideoPlayer {
                             // 添加写入进度监控
                             writer.onprogress = (e) => {
                                 console.log('写入进度:', e.loaded, '/', e.total);
+                                
+                                // 重置超时计时器
+                                clearTimeout(writeTimeout);
+                                setTimeout(() => {
+                                    writeTimeout.refresh();
+                                }, 0);
+                            };
+                            
+                            // 清除超时计时器当写入成功时
+                            const originalOnWrite = writer.onwrite;
+                            writer.onwrite = () => {
+                                clearTimeout(writeTimeout);
+                                originalOnWrite();
+                            };
+                            
+                            // 清除超时计时器当写入错误时
+                            const originalOnError = writer.onerror;
+                            writer.onerror = (e) => {
+                                clearTimeout(writeTimeout);
+                                originalOnError(e);
                             };
                             
                             console.log('调用writer.write()...');
@@ -747,37 +778,87 @@ class VideoPlayer {
     // 备用文件保存方法
     async saveFileWithAlternativeMethod(fileName, arrayBuffer) {
         return new Promise((resolve, reject) => {
-            console.log('使用备用方法保存文件:', fileName);
+            console.log('使用备用方法保存文件:', fileName, '文件大小:', arrayBuffer.byteLength, 'bytes');
             
             // 尝试使用更简单的文件保存方式
             const fileData = new Uint8Array(arrayBuffer);
             
             // 使用plus.io直接写入文件
             plus.io.resolveLocalFileSystemURL('_doc/' + fileName, (fileEntry) => {
+                console.log('备用方法：找到现有文件，直接写入');
                 fileEntry.createWriter((writer) => {
                     writer.onwrite = () => {
                         console.log('✓ 备用方法文件写入成功');
-                        resolve(fileEntry.toLocalURL());
+                        const fileUrl = fileEntry.toLocalURL();
+                        console.log('备用方法文件保存到:', fileUrl);
+                        resolve(fileUrl);
                     };
                     writer.onerror = (e) => {
                         console.error('备用方法写入失败:', e);
                         reject(e);
                     };
+                    
+                    // 添加写入超时
+                    const altTimeout = setTimeout(() => {
+                        console.error('备用方法写入超时');
+                        reject(new Error('备用方法写入超时'));
+                    }, 10000);
+                    
+                    writer.onwrite = () => {
+                        clearTimeout(altTimeout);
+                        console.log('✓ 备用方法文件写入成功');
+                        const fileUrl = fileEntry.toLocalURL();
+                        console.log('备用方法文件保存到:', fileUrl);
+                        resolve(fileUrl);
+                    };
+                    
+                    writer.onerror = (e) => {
+                        clearTimeout(altTimeout);
+                        console.error('备用方法写入失败:', e);
+                        reject(e);
+                    };
+                    
+                    console.log('备用方法开始写入数据...');
                     writer.write(new Blob([fileData]));
                 }, reject);
             }, () => {
                 // 文件不存在，先创建
+                console.log('备用方法：文件不存在，创建新文件');
                 plus.io.resolveLocalFileSystemURL('_doc', (rootEntry) => {
                     rootEntry.getFile(fileName, {create: true}, (fileEntry) => {
                         fileEntry.createWriter((writer) => {
                             writer.onwrite = () => {
                                 console.log('✓ 备用方法创建并写入成功');
-                                resolve(fileEntry.toLocalURL());
+                                const fileUrl = fileEntry.toLocalURL();
+                                console.log('备用方法文件保存到:', fileUrl);
+                                resolve(fileUrl);
                             };
                             writer.onerror = (e) => {
                                 console.error('备用方法创建写入失败:', e);
                                 reject(e);
                             };
+                            
+                            // 添加写入超时
+                            const altTimeout = setTimeout(() => {
+                                console.error('备用方法创建写入超时');
+                                reject(new Error('备用方法创建写入超时'));
+                            }, 10000);
+                            
+                            writer.onwrite = () => {
+                                clearTimeout(altTimeout);
+                                console.log('✓ 备用方法创建并写入成功');
+                                const fileUrl = fileEntry.toLocalURL();
+                                console.log('备用方法文件保存到:', fileUrl);
+                                resolve(fileUrl);
+                            };
+                            
+                            writer.onerror = (e) => {
+                                clearTimeout(altTimeout);
+                                console.error('备用方法创建写入失败:', e);
+                                reject(e);
+                            };
+                            
+                            console.log('备用方法开始创建并写入数据...');
                             writer.write(new Blob([fileData]));
                         }, reject);
                     }, reject);
