@@ -567,7 +567,7 @@ class VideoPlayer {
             // 根据环境选择存储方式
             if (this.isAppEnvironment()) {
                 // App环境：保存到文件系统
-                localUrl = await this.saveToAppFileSystem(fileId, blob);
+                localUrl = await this.saveToAppFileSystem(fileId, blob, downloadUrl);
             } else {
                 // 浏览器环境：使用Blob URL
                 localUrl = URL.createObjectURL(blob);
@@ -599,21 +599,40 @@ class VideoPlayer {
     }
     
     // 保存文件到App文件系统
-    async saveToAppFileSystem(fileId, blob) {
+    async saveToAppFileSystem(fileId, blob, downloadUrl = '') {
         return new Promise((resolve, reject) => {
             try {
                 // 确保downloads目录存在
                 const downloadsDir = '_downloads';
                 plus.io.requestFileSystem(plus.io.PRIVATE_WWW, (fs) => {
                     fs.root.getDirectory(downloadsDir, { create: true }, (dirEntry) => {
-                        // 创建文件
-                        const fileName = `${fileId}.mp4`;
+                        // 从下载URL中提取原始文件名，如果没有则使用fileId
+                        let fileName = `${fileId}`;
+                        if (downloadUrl) {
+                            try {
+                                const url = new URL(downloadUrl);
+                                const pathParts = url.pathname.split('/');
+                                const originalFileName = pathParts[pathParts.length - 1];
+                                if (originalFileName && originalFileName.includes('.')) {
+                                    fileName = originalFileName;
+                                    console.log('使用原始文件名:', fileName);
+                                }
+                            } catch (e) {
+                                console.log('无法从URL提取文件名，使用fileId:', fileId);
+                            }
+                        }
+                        
+                        // 确保文件名有扩展名
+                        if (!fileName.includes('.')) {
+                            fileName += '.mp4'; // 默认扩展名
+                        }
+                        
                         dirEntry.getFile(fileName, { create: true }, (fileEntry) => {
                             fileEntry.createWriter((writer) => {
                                 writer.onwriteend = () => {
                                     // 返回文件URL
                                     const fileUrl = fileEntry.toLocalURL();
-                                    console.log('文件已保存到App文件系统:', fileUrl);
+                                    console.log('文件已保存到App文件系统:', fileUrl, '文件名:', fileName);
                                     resolve(fileUrl);
                                 };
                                 writer.onerror = (e) => {
@@ -642,6 +661,7 @@ class VideoPlayer {
     async loadFromAppFileSystem(fileId) {
         return new Promise((resolve, reject) => {
             try {
+                // 首先尝试使用fileId作为文件名（兼容旧版本）
                 const fileName = `${fileId}.mp4`;
                 const filePath = `_downloads/${fileName}`;
                 
@@ -650,12 +670,49 @@ class VideoPlayer {
                     console.log('从App文件系统加载文件:', fileUrl);
                     resolve(fileUrl);
                 }, (error) => {
-                    console.log('App文件系统中未找到文件:', filePath);
-                    reject(new Error('文件不存在'));
+                    // 如果fileId格式的文件不存在，尝试查找_downloads目录下的所有文件
+                    console.log('App文件系统中未找到文件:', filePath, '，尝试查找其他文件');
+                    this.findFileInDownloads(fileId).then(resolve).catch(reject);
                 });
             } catch (error) {
                 reject(error);
             }
+        });
+    }
+    
+    // 在_downloads目录中查找文件
+    async findFileInDownloads(fileId) {
+        return new Promise((resolve, reject) => {
+            plus.io.requestFileSystem(plus.io.PRIVATE_WWW, (fs) => {
+                fs.root.getDirectory('_downloads', { create: false }, (dirEntry) => {
+                    const directoryReader = dirEntry.createReader();
+                    directoryReader.readEntries((entries) => {
+                        if (entries.length === 0) {
+                            reject(new Error('_downloads目录为空'));
+                            return;
+                        }
+                        
+                        // 查找包含fileId的文件
+                        const matchingFile = entries.find(entry => 
+                            entry.name.includes(fileId) || entry.name.includes(fileId.replace(/[^a-zA-Z0-9]/g, ''))
+                        );
+                        
+                        if (matchingFile) {
+                            const fileUrl = matchingFile.toLocalURL();
+                            console.log('找到匹配的文件:', matchingFile.name, fileUrl);
+                            resolve(fileUrl);
+                        } else {
+                            // 如果没有找到匹配的文件，返回第一个文件
+                            const firstFile = entries[0];
+                            const fileUrl = firstFile.toLocalURL();
+                            console.log('未找到匹配文件，使用第一个文件:', firstFile.name, fileUrl);
+                            resolve(fileUrl);
+                        }
+                    }, reject);
+                }, (error) => {
+                    reject(new Error('_downloads目录不存在'));
+                });
+            }, reject);
         });
     }
     

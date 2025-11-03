@@ -479,6 +479,7 @@ class AdScreenPlayer {
             {
                 id: 'demo1',
                 url: '',
+                downloadUrl: '', // 明确设置空下载链接
                 title: '等待文件分发',
                 duration: 0,
                 thumbnail: ''
