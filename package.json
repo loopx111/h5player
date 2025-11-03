@@ -1,0 +1,14 @@
+{
+  "name": "h5player",
+  "version": "1.0.0",
+  "description": "H5广告屏播放器应用",
+  "main": "index.html",
+  "scripts": {
+    "dev": "hbuilderx-cli serve",
+    "build": "hbuilderx-cli build",
+    "build:app": "hbuilderx-cli build --platform app"
+  },
+  "keywords": ["h5", "video", "player"],
+  "author": "开发者名称",
+  "license": "MIT"
+}

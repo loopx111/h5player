@@ -39,11 +39,18 @@
             "immersed" : true
         },
         "launchwebview" : {
-            "background" : "#000000"
+            "background" : "#000000",
+            "debug" : true
         },
         "distribute" : {
             "ios" : {
                 "dSYMs" : false
+            },
+            "android" : {
+                "packagename" : "com.example.h5player",
+                "versioncode" : 100,
+                "minSdkVersion" : 21,
+                "targetSdkVersion" : 33
             }
         }
     },
