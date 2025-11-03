@@ -28,7 +28,7 @@ class AdScreenPlayer {
             await this.startPlayer();
             
             this.isInitialized = true;
-            console.log('广告屏播放器初始化完成');
+            console.log('广告屏播放器初始化完成1');
             
         } catch (error) {
             console.error('播放器初始化失败:', error);
@@ -52,7 +52,16 @@ class AdScreenPlayer {
         this.modules.monitor = new PerformanceMonitor();
         
         // 初始化视频播放器
-        this.modules.videoPlayer = new window.VideoPlayer();
+        console.log('检查VideoPlayer类型:', typeof window.VideoPlayer);
+        console.log('VideoPlayer构造函数:', window.VideoPlayer);
+        
+        if (typeof window.VideoPlayer === 'function' && window.VideoPlayer.prototype && window.VideoPlayer.prototype.constructor === window.VideoPlayer) {
+            this.modules.videoPlayer = new window.VideoPlayer();
+            console.log('VideoPlayer实例化成功');
+        } else {
+            console.error('VideoPlayer不是有效的构造函数:', window.VideoPlayer);
+            throw new Error('VideoPlayer is not a valid constructor');
+        }
         
         console.log('所有模块初始化完成');
     }

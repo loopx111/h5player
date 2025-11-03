@@ -1,3 +1,6 @@
+console.log('开始加载video-player.js文件');
+console.log('开始加载video-player.js文件');
+console.log('开始加载video-player.js文件');
 class VideoPlayer {
     constructor() {
         this.video1 = document.getElementById('video1');
@@ -1718,5 +1721,15 @@ class VideoPlayer {
     }
 }
 
-// 导出单例
-window.VideoPlayer = VideoPlayer;
+// 导出类
+console.log('开始导出VideoPlayer类到window对象');
+console.log('VideoPlayer类型:', typeof VideoPlayer);
+console.log('VideoPlayer值:', VideoPlayer);
+
+if (typeof VideoPlayer !== 'undefined') {
+    window.VideoPlayer = VideoPlayer;
+    console.log('VideoPlayer类已成功导出到window.VideoPlayer');
+    console.log('window.VideoPlayer类型:', typeof window.VideoPlayer);
+} else {
+    console.error('VideoPlayer class is not defined');
+}
