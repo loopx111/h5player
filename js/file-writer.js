@@ -290,6 +290,9 @@ class FileWriter {
 // 创建全局实例
 if (typeof window !== 'undefined') {
     window.fileWriter = new FileWriter();
+    console.log('FileWriter模块已加载到全局作用域');
 }
 
-export default FileWriter;
+// 确保没有export语句
+
+// 确保没有export语句
