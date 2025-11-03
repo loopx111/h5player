@@ -672,17 +672,46 @@ class VideoPlayer {
                                             return;
                                         }
                                         
-                                        // 使用setTimeout避免可能的异步执行错误
-                                        setTimeout(() => {
-                                            try {
-                                                writer.write(new Uint8Array(reader.result));
-                                                console.log('文件数据写入完成');
-                                            } catch (writeError) {
-                                                console.error('文件写入异常:', writeError);
-                                                console.error('写入异常详情:', writeError.message, writeError.stack);
-                                                reject(writeError);
-                                            }
-                                        }, 0);
+                                        // 使用更可靠的写入方法
+                                        try {
+                                            // 先尝试直接写入
+                                            writer.write(new Uint8Array(reader.result));
+                                            console.log('文件数据写入完成');
+                                        } catch (writeError) {
+                                            console.error('直接写入失败，尝试备用方法:', writeError);
+                                            
+                                            // 备用方法：使用plus.io API直接写入文件
+                                            fileEntry.file((file) => {
+                                                try {
+                                                    const blob = new Blob([reader.result], { type: 'application/octet-stream' });
+                                                    plus.io.resolveLocalFileSystemURL(fileEntry.toLocalURL(), (entry) => {
+                                                        entry.createWriter((altWriter) => {
+                                                            altWriter.onwriteend = () => {
+                                                                console.log('备用方法：文件已保存到App文件系统');
+                                                                resolve(fileEntry.toLocalURL());
+                                                            };
+                                                            altWriter.onerror = (e) => {
+                                                                console.error('备用方法写入失败:', e);
+                                                                reject(e);
+                                                            };
+                                                            altWriter.write(blob);
+                                                        }, (error) => {
+                                                            console.error('备用方法创建写入器失败:', error);
+                                                            reject(error);
+                                                        });
+                                                    }, (error) => {
+                                                        console.error('备用方法解析文件失败:', error);
+                                                        reject(error);
+                                                    });
+                                                } catch (altError) {
+                                                    console.error('备用方法异常:', altError);
+                                                    reject(altError);
+                                                }
+                                            }, (error) => {
+                                                console.error('获取文件对象失败:', error);
+                                                reject(error);
+                                            });
+                                        }
                                     } catch (writeError) {
                                         console.error('文件写入异常:', writeError);
                                         console.error('写入异常详情:', writeError.message, writeError.stack);
