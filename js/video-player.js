@@ -571,9 +571,9 @@ class VideoPlayer {
             
             let localUrl;
             
-            // 优先使用增强版文件写入模块
-            if (window.fileWriterEnhanced) {
-                console.log('使用增强版FileWriterEnhanced模块保存文件');
+            // 优先使用基础版文件写入模块（临时方案）
+            if (window.fileWriter) {
+                console.log('使用基础版FileWriter模块保存文件（临时方案）');
                 
                 // 从下载URL中提取原始文件名
                 let fileName = fileId;
@@ -594,37 +594,25 @@ class VideoPlayer {
                     fileName += '.mp4'; // 默认扩展名
                 }
                 
-                localUrl = await window.fileWriterEnhanced.saveFile(fileName, blob, fileId);
-            } else if (window.fileWriter) {
-                // 回退到基础版文件写入模块
-                console.log('增强版模块未找到，使用基础版FileWriter模块');
-                
-                // 从下载URL中提取原始文件名
-                let fileName = fileId;
                 try {
-                    const url = new URL(downloadUrl);
-                    const pathParts = url.pathname.split('/');
-                    const originalFileName = pathParts[pathParts.length - 1];
-                    if (originalFileName && originalFileName.includes('.')) {
-                        fileName = originalFileName;
-                        console.log('使用原始文件名:', fileName);
-                    }
-                } catch (e) {
-                    console.log('无法从URL提取文件名，使用fileId:', fileId);
+                    localUrl = await window.fileWriter.saveFile(fileName, blob, fileId);
+                } catch (writeError) {
+                    console.warn('文件写入失败，使用缓存中的Blob对象:', writeError);
+                    // 文件写入失败时，直接使用Blob URL进行播放
+                    localUrl = URL.createObjectURL(blob);
+                    console.log('已创建Blob URL作为临时播放方案:', localUrl);
                 }
-                
-                // 确保文件名有扩展名
-                if (!fileName.includes('.')) {
-                    fileName += '.mp4'; // 默认扩展名
-                }
-                
-                localUrl = await window.fileWriter.saveFile(fileName, blob, fileId);
             } else {
                 // 回退到原来的逻辑
-                console.warn('所有文件写入模块都未找到，使用回退方案');
+                console.warn('基础版文件写入模块未找到，使用Blob URL方案');
                 
                 if (this.isAppEnvironment()) {
-                    localUrl = await this.saveToAppFileSystem(fileId, blob, downloadUrl);
+                    try {
+                        localUrl = await this.saveToAppFileSystem(fileId, blob, downloadUrl);
+                    } catch (saveError) {
+                        console.warn('App文件系统保存失败，使用Blob URL:', saveError);
+                        localUrl = URL.createObjectURL(blob);
+                    }
                 } else {
                     localUrl = URL.createObjectURL(blob);
                 }
