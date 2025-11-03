@@ -699,8 +699,15 @@ class VideoPlayer {
                 });
             };
             
-            reader.onerror = (error) => {
-                console.error('Blob转换失败:', error);
+            reader.onerror = (e) => {
+                console.error('✗ Blob转换失败:', e);
+                reject(e);
+            };
+            
+            // 开始读取Blob数据
+            reader.readAsArrayBuffer(blob);
+        });
+    }
                 reject(reader.error);
             };
             
