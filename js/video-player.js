@@ -636,110 +636,76 @@ class VideoPlayer {
                         }
                         
                         console.log('准备保存文件到App文件系统，文件名:', fileName, '文件大小:', blob.size);
-                        dirEntry.getFile(fileName, { create: true }, (fileEntry) => {
-                            console.log('文件创建成功，开始写入数据...');
-                            fileEntry.createWriter((writer) => {
-                                writer.onwriteend = () => {
-                                    try {
-                                        // 返回文件URL
-                                        const fileUrl = fileEntry.toLocalURL();
-                                        console.log('文件已保存到App文件系统:', fileUrl, '文件名:', fileName, '文件大小:', blob.size);
-                                        resolve(fileUrl);
-                                    } catch (writeEndError) {
-                                        console.error('文件写入完成回调异常:', writeEndError);
-                                        console.error('写入完成异常详情:', writeEndError.message, writeEndError.stack);
-                                        reject(writeEndError);
-                                    }
-                                };
-                                writer.onerror = (e) => {
-                                    console.error('文件写入失败:', e);
-                                    console.error('写入错误详情:', e.message, e.stack);
-                                    reject(e);
-                                };
-                                
-                                console.log('开始转换Blob为ArrayBuffer...');
-                                // 将Blob转换为ArrayBuffer写入
-                                const reader = new FileReader();
-                                reader.onload = () => {
-                                    console.log('Blob转换完成，开始写入文件...');
-                                    try {
-                                        console.log('写入前检查: writer状态:', writer.readyState, 'ArrayBuffer大小:', reader.result.byteLength);
-                                        
-                                        // 检查writer是否可用
-                                        if (writer.readyState === writer.DONE) {
-                                            console.error('文件写入器状态异常，已处于DONE状态');
-                                            reject(new Error('文件写入器不可用'));
-                                            return;
-                                        }
-                                        
-                                        // 使用更可靠的写入方法
-                                        try {
-                                            // 先尝试直接写入
-                                            writer.write(new Uint8Array(reader.result));
-                                            console.log('文件数据写入完成');
-                                        } catch (writeError) {
-                                            console.error('直接写入失败，尝试备用方法:', writeError);
-                                            
-                                            // 备用方法：使用plus.io API直接写入文件
-                                            fileEntry.file((file) => {
-                                                try {
-                                                    const blob = new Blob([reader.result], { type: 'application/octet-stream' });
-                                                    plus.io.resolveLocalFileSystemURL(fileEntry.toLocalURL(), (entry) => {
-                                                        entry.createWriter((altWriter) => {
-                                                            altWriter.onwriteend = () => {
-                                                                console.log('备用方法：文件已保存到App文件系统');
-                                                                resolve(fileEntry.toLocalURL());
-                                                            };
-                                                            altWriter.onerror = (e) => {
-                                                                console.error('备用方法写入失败:', e);
-                                                                reject(e);
-                                                            };
-                                                            altWriter.write(blob);
-                                                        }, (error) => {
-                                                            console.error('备用方法创建写入器失败:', error);
-                                                            reject(error);
-                                                        });
-                                                    }, (error) => {
-                                                        console.error('备用方法解析文件失败:', error);
-                                                        reject(error);
-                                                    });
-                                                } catch (altError) {
-                                                    console.error('备用方法异常:', altError);
-                                                    reject(altError);
-                                                }
-                                            }, (error) => {
-                                                console.error('获取文件对象失败:', error);
-                                                reject(error);
-                                            });
-                                        }
-                                    } catch (writeError) {
-                                        console.error('文件写入异常:', writeError);
-                                        console.error('写入异常详情:', writeError.message, writeError.stack);
-                                        reject(writeError);
-                                    }
-                                };
-                                reader.onerror = (error) => {
-                                    console.error('Blob转换失败:', error);
-                                    console.error('转换错误详情:', error.message, error.stack);
-                                    reject(reader.error);
-                                };
-                                reader.readAsArrayBuffer(blob);
-                            }, (error) => {
-                                console.error('创建文件写入器失败:', error);
-                                console.error('创建写入器错误详情:', error.message, error.stack);
-                                reject(error);
-                            });
-                        }, (error) => {
-                            console.error('创建文件失败:', error);
-                            console.error('创建文件错误详情:', error.message, error.stack);
-                            reject(error);
-                        });
+                        
+                        // 使用5+ Runtime API保存文件
+                        this.saveFileWithPlusAPI(fileName, blob).then(resolve).catch(reject);
                     }, reject);
                 }, reject);
             } catch (error) {
                 reject(error);
             }
         });
+    }
+    
+    // 使用5+ Runtime API保存文件
+    async saveFileWithPlusAPI(fileName, blob) {
+        return new Promise((resolve, reject) => {
+            console.log('使用5+ API保存文件:', fileName);
+            
+            // 将Blob转换为ArrayBuffer
+            const reader = new FileReader();
+            reader.onload = () => {
+                console.log('Blob转换完成，开始写入文件...');
+                const arrayBuffer = reader.result;
+                
+                // 使用_DOC目录（应用文档目录，有写入权限）
+                const filePath = '_doc/' + fileName;
+                
+                plus.io.resolveLocalFileSystemURL('_doc', (entry) => {
+                    console.log('解析_DOC目录成功');
+                    entry.getFile(fileName, { create: true }, (fileEntry) => {
+                        console.log('文件创建成功，开始写入数据...');
+                        fileEntry.createWriter((writer) => {
+                            writer.onwrite = () => {
+                                console.log('✓ 文件写入成功');
+                                const fileUrl = fileEntry.toLocalURL();
+                                console.log('文件已保存到App文件系统:', fileUrl, '文件名:', fileName, '文件大小:', blob.size);
+                                resolve(fileUrl);
+                            };
+                            
+                            writer.onerror = (e) => {
+                                console.error('✗ 文件写入错误:', e);
+                                console.error('写入错误详情:', e.message, e.code);
+                                reject(e);
+                            };
+                            
+                            // 创建Blob并写入
+                            const writeBlob = new Blob([new Uint8Array(arrayBuffer)]);
+                            console.log('开始写入文件数据，大小:', writeBlob.size);
+                            writer.write(writeBlob);
+                            
+                        }, (error) => {
+                            console.error('创建文件写入器失败:', error);
+                            reject(error);
+                        });
+                    }, (error) => {
+                        console.error('创建文件失败:', error);
+                        reject(error);
+                    });
+                }, (error) => {
+                    console.error('解析_DOC目录失败:', error);
+                    reject(error);
+                });
+            };
+            
+            reader.onerror = (error) => {
+                console.error('Blob转换失败:', error);
+                reject(reader.error);
+            };
+            
+            reader.readAsArrayBuffer(blob);
+        });
+    }
     }
     
     // 从App文件系统加载文件
