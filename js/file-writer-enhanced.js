@@ -73,29 +73,56 @@ class FileWriterEnhanced {
     // 带超时的文件保存
     async saveFileWithTimeout(fileName, arrayBuffer, retryCount) {
         return new Promise(async (resolve, reject) => {
-            const timeoutId = setTimeout(() => {
-                reject(new Error(`文件保存超时（${this.timeout}ms），重试次数: ${retryCount}`));
-            }, this.timeout);
-
+            let timeoutId;
+            let methodCompleted = false;
+            
+            const clearTimeoutIfNeeded = () => {
+                if (timeoutId) {
+                    clearTimeout(timeoutId);
+                }
+            };
+            
+            const tryMethodWithTimeout = async (method, methodName) => {
+                return new Promise((methodResolve, methodReject) => {
+                    timeoutId = setTimeout(() => {
+                        if (!methodCompleted) {
+                            methodReject(new Error(`${methodName}超时（${this.timeout}ms）`));
+                        }
+                    }, this.timeout);
+                    
+                    method(fileName, arrayBuffer).then(result => {
+                        methodCompleted = true;
+                        clearTimeoutIfNeeded();
+                        methodResolve(result);
+                    }).catch(error => {
+                        methodCompleted = true;
+                        clearTimeoutIfNeeded();
+                        methodReject(error);
+                    });
+                });
+            };
+            
             try {
-                // 方法1：尝试使用plus.io.writeFile（最可靠）
-                const result = await this.tryPlusWriteFile(fileName, arrayBuffer);
-                clearTimeout(timeoutId);
+                // 方法1：尝试使用FileWriter API
+                const result = await tryMethodWithTimeout(this.tryPlusWriteFile.bind(this), "方法1");
                 resolve(result);
-            } catch (error) {
-                clearTimeout(timeoutId);
+            } catch (error1) {
+                console.log(`✗ 方法1失败: ${error1.message}`);
                 
                 // 方法1失败，尝试方法2
                 try {
-                    const result = await this.tryPlusFileWriter(fileName, arrayBuffer);
+                    const result = await tryMethodWithTimeout(this.tryPlusFileWriter.bind(this), "方法2");
                     resolve(result);
                 } catch (error2) {
+                    console.log(`✗ 方法2失败: ${error2.message}`);
+                    
                     // 方法2失败，尝试方法3
                     try {
-                        const result = await this.tryBase64Method(fileName, arrayBuffer);
+                        const result = await tryMethodWithTimeout(this.tryBase64Method.bind(this), "方法3");
                         resolve(result);
                     } catch (error3) {
-                        reject(new Error(`所有方法都失败: ${error.message}, ${error2.message}, ${error3.message}`));
+                        console.log(`✗ 方法3失败: ${error3.message}`);
+                        reject(new Error(`所有方法都失败: ${error1.message}, ${error2.message}, ${error3.message}`));
                     }
                 }
             }
