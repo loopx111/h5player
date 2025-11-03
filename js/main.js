@@ -36,6 +36,43 @@ class AdScreenPlayer {
         }
     }
     
+    // 等待VideoPlayer类可用
+    async waitForVideoPlayer() {
+        console.log('等待VideoPlayer类加载...');
+        
+        const maxWaitTime = 5000; // 最大等待时间5秒
+        const checkInterval = 100; // 检查间隔100ms
+        const startTime = Date.now();
+        
+        return new Promise((resolve, reject) => {
+            const checkVideoPlayer = () => {
+                const currentTime = Date.now();
+                
+                // 检查是否超时
+                if (currentTime - startTime > maxWaitTime) {
+                    console.error('等待VideoPlayer类超时');
+                    reject(new Error('VideoPlayer类加载超时'));
+                    return;
+                }
+                
+                // 检查VideoPlayer类是否可用
+                if (typeof VideoPlayer === 'function' || typeof window.VideoPlayer === 'function') {
+                    console.log('VideoPlayer类已加载完成');
+                    console.log('全局VideoPlayer类型:', typeof VideoPlayer);
+                    console.log('window.VideoPlayer类型:', typeof window.VideoPlayer);
+                    resolve();
+                    return;
+                }
+                
+                // 继续等待
+                setTimeout(checkVideoPlayer, checkInterval);
+            };
+            
+            // 开始检查
+            checkVideoPlayer();
+        });
+    }
+    
     async initializeModules() {
         // 初始化缓存管理器
         this.modules.cacheManager = new CacheManager();
@@ -51,15 +88,28 @@ class AdScreenPlayer {
         // 初始化性能监控
         this.modules.monitor = new PerformanceMonitor();
         
-        // 初始化视频播放器
-        console.log('检查VideoPlayer类型:', typeof window.VideoPlayer);
-        console.log('VideoPlayer构造函数:', window.VideoPlayer);
+        // 初始化视频播放器 - 添加等待机制确保VideoPlayer类已加载
+        console.log('开始初始化VideoPlayer模块...');
         
-        if (typeof window.VideoPlayer === 'function' && window.VideoPlayer.prototype && window.VideoPlayer.prototype.constructor === window.VideoPlayer) {
+        // 等待VideoPlayer类可用
+        await this.waitForVideoPlayer();
+        
+        console.log('检查全局VideoPlayer类型:', typeof VideoPlayer);
+        console.log('检查window.VideoPlayer类型:', typeof window.VideoPlayer);
+        
+        // 尝试直接使用VideoPlayer类
+        if (typeof VideoPlayer === 'function') {
+            this.modules.videoPlayer = new VideoPlayer();
+            console.log('VideoPlayer实例化成功（直接使用）');
+        } 
+        // 如果直接使用失败，尝试通过window对象
+        else if (typeof window.VideoPlayer === 'function') {
             this.modules.videoPlayer = new window.VideoPlayer();
-            console.log('VideoPlayer实例化成功');
+            console.log('VideoPlayer实例化成功（通过window对象）');
         } else {
-            console.error('VideoPlayer不是有效的构造函数:', window.VideoPlayer);
+            console.error('VideoPlayer不是有效的构造函数:');
+            console.error('全局VideoPlayer:', VideoPlayer);
+            console.error('window.VideoPlayer:', window.VideoPlayer);
             throw new Error('VideoPlayer is not a valid constructor');
         }
         

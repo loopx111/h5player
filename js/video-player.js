@@ -1,6 +1,4 @@
 console.log('开始加载video-player.js文件');
-console.log('开始加载video-player.js文件');
-console.log('开始加载video-player.js文件');
 class VideoPlayer {
     constructor() {
         this.video1 = document.getElementById('video1');
@@ -708,7 +706,6 @@ class VideoPlayer {
             
             reader.readAsArrayBuffer(blob);
         });
-    }
     }
     
     // 从App文件系统加载文件
@@ -1721,15 +1718,20 @@ class VideoPlayer {
     }
 }
 
-// 导出类
-console.log('开始导出VideoPlayer类到window对象');
+// 导出类到全局作用域
+console.log('开始导出VideoPlayer类到全局作用域');
 console.log('VideoPlayer类型:', typeof VideoPlayer);
 console.log('VideoPlayer值:', VideoPlayer);
 
-if (typeof VideoPlayer !== 'undefined') {
+// 确保VideoPlayer类被正确导出
+if (typeof VideoPlayer === 'function') {
+    // 导出到window对象
     window.VideoPlayer = VideoPlayer;
     console.log('VideoPlayer类已成功导出到window.VideoPlayer');
     console.log('window.VideoPlayer类型:', typeof window.VideoPlayer);
+    console.log('全局VideoPlayer类型:', typeof VideoPlayer);
 } else {
-    console.error('VideoPlayer class is not defined');
+    console.error('VideoPlayer class is not defined or not a function');
 }
+
+console.log('video-player.js文件加载完成');
