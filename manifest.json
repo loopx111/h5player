@@ -1,0 +1,52 @@
+{
+    "name" : "广告屏播放器",
+    "appid" : "__UNI__ABCDEFG",
+    "id" : "H5B619290",
+    "version" : {
+        "name" : "1.0.0",
+        "code" : 100
+    },
+    "description" : "H5广告屏播放器应用",
+    "icons" : {
+        "72" : "img/icon.png"
+    },
+    "launch_path" : "index.html",
+    "developer" : {
+        "name" : "开发者名称",
+        "email" : "developer@example.com",
+        "url" : "http://www.example.com"
+    },
+    "permissions" : {
+        "File" : {
+            "description" : "文件读写权限"
+        },
+        "Network" : {
+            "description" : "网络访问权限"
+        },
+        "Storage" : {
+            "description" : "本地存储权限"
+        },
+        "Device" : {
+            "description" : "设备信息权限"
+        }
+    },
+    "plus" : {
+        "splashscreen" : {
+            "autoclose" : true,
+            "waiting" : true
+        },
+        "statusbar" : {
+            "immersed" : true
+        },
+        "launchwebview" : {
+            "background" : "#000000"
+        },
+        "distribute" : {
+            "ios" : {
+                "dSYMs" : false
+            }
+        }
+    },
+    "orientation" : [ "landscape-primary", "landscape-secondary" ],
+    "fullscreen" : true
+}
