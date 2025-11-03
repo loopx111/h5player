@@ -622,9 +622,17 @@ class VideoPlayer {
                             }
                         }
                         
-                        // 确保文件名有扩展名
+                        // 确保文件名有扩展名（只有在没有扩展名时才添加默认扩展名）
                         if (!fileName.includes('.')) {
                             fileName += '.mp4'; // 默认扩展名
+                        } else {
+                            // 如果已经有扩展名，确保它是正确的扩展名
+                            const extension = fileName.split('.').pop().toLowerCase();
+                            const supportedFormats = [...this.supportedImageFormats, ...this.supportedVideoFormats];
+                            if (!supportedFormats.includes(extension)) {
+                                // 如果扩展名不被支持，使用默认扩展名
+                                fileName = fileName.split('.')[0] + '.mp4';
+                            }
                         }
                         
                         dirEntry.getFile(fileName, { create: true }, (fileEntry) => {
