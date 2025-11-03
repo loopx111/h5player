@@ -309,7 +309,9 @@ class AdScreenPlayer {
             for (const file of data.files) {
                 try {
                     console.log(`开始下载文件: ${file.name} (${file.downloadUrl})`);
+                    console.log('调用downloadFile前，file.uuid:', file.uuid, 'file.id:', file.id);
                     const localUrl = await this.modules.videoPlayer.downloadFile(file.downloadUrl, file.uuid || file.id);
+                    console.log('downloadFile返回的localUrl:', localUrl);
                     
                     // 检测文件类型
                     const fileFormat = this.modules.videoPlayer.getFileFormat(file.downloadUrl || file.name);
@@ -324,8 +326,11 @@ class AdScreenPlayer {
                     console.log('文件下载完成:', file.name, localUrl, '格式:', fileFormat);
                 } catch (error) {
                     console.error('文件下载失败:', file.name, error);
+                    console.error('下载失败的错误详情:', error.message, error.stack);
                 }
             }
+            
+            console.log('所有文件下载完成，下载文件列表:', downloadedFiles);
             
             // 创建播放列表
             const playlist = downloadedFiles.map(file => ({
@@ -336,8 +341,11 @@ class AdScreenPlayer {
                 fileFormat: file.fileFormat
             }));
             
+            console.log('创建的播放列表:', playlist);
+            
             // 设置播放列表并立即播放
             const playMode = data.mode === 'immediate' ? 'sequential' : (data.playMode || 'sequential');
+            console.log('播放模式:', playMode);
             await this.modules.videoPlayer.setPlaylist(playlist, playMode);
             
             // 保存播放列表到CacheManager的IndexedDB
@@ -587,12 +595,17 @@ class AdScreenPlayer {
 // 全局错误处理
 window.addEventListener('error', (event) => {
     console.error('全局错误:', event.error);
+    console.error('全局错误详情 - 消息:', event.message);
+    console.error('全局错误详情 - 文件名:', event.filename);
+    console.error('全局错误详情 - 行号:', event.lineno);
+    console.error('全局错误详情 - 列号:', event.colno);
+    console.error('全局错误详情 - 堆栈:', event.error?.stack);
     
     // 发送错误报告
     if (window.adScreenPlayer && window.adScreenPlayer.modules.monitor) {
         window.adScreenPlayer.modules.monitor.trackError('global_error', {
-            message: event.error.message,
-            stack: event.error.stack,
+            message: event.error?.message || event.message,
+            stack: event.error?.stack,
             filename: event.filename,
             lineno: event.lineno,
             colno: event.colno

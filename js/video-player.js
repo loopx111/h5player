@@ -635,28 +635,46 @@ class VideoPlayer {
                             }
                         }
                         
+                        console.log('准备保存文件到App文件系统，文件名:', fileName, '文件大小:', blob.size);
                         dirEntry.getFile(fileName, { create: true }, (fileEntry) => {
+                            console.log('文件创建成功，开始写入数据...');
                             fileEntry.createWriter((writer) => {
                                 writer.onwriteend = () => {
                                     // 返回文件URL
                                     const fileUrl = fileEntry.toLocalURL();
-                                    console.log('文件已保存到App文件系统:', fileUrl, '文件名:', fileName);
+                                    console.log('文件已保存到App文件系统:', fileUrl, '文件名:', fileName, '文件大小:', blob.size);
                                     resolve(fileUrl);
                                 };
                                 writer.onerror = (e) => {
                                     console.error('文件写入失败:', e);
+                                    console.error('写入错误详情:', e.message, e.stack);
                                     reject(e);
                                 };
                                 
+                                console.log('开始转换Blob为ArrayBuffer...');
                                 // 将Blob转换为ArrayBuffer写入
                                 const reader = new FileReader();
                                 reader.onload = () => {
+                                    console.log('Blob转换完成，开始写入文件...');
                                     writer.write(new Uint8Array(reader.result));
+                                    console.log('文件数据写入完成');
                                 };
-                                reader.onerror = () => reject(reader.error);
+                                reader.onerror = (error) => {
+                                    console.error('Blob转换失败:', error);
+                                    console.error('转换错误详情:', error.message, error.stack);
+                                    reject(reader.error);
+                                };
                                 reader.readAsArrayBuffer(blob);
-                            }, reject);
-                        }, reject);
+                            }, (error) => {
+                                console.error('创建文件写入器失败:', error);
+                                console.error('创建写入器错误详情:', error.message, error.stack);
+                                reject(error);
+                            });
+                        }, (error) => {
+                            console.error('创建文件失败:', error);
+                            console.error('创建文件错误详情:', error.message, error.stack);
+                            reject(error);
+                        });
                     }, reject);
                 }, reject);
             } catch (error) {
