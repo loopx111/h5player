@@ -526,6 +526,23 @@ class VideoPlayer {
                 throw new Error('下载URL中未找到token参数');
             }
             
+            // 在App环境中，先检查存储权限
+            if (this.isAppEnvironment()) {
+                console.log('App环境，检查存储权限...');
+                const hasPermission = await this.checkStoragePermission();
+                
+                if (!hasPermission) {
+                    console.log('存储权限不足，尝试请求权限...');
+                    const permissionGranted = await this.requestStoragePermission();
+                    
+                    if (!permissionGranted) {
+                        throw new Error('存储权限被拒绝，无法保存文件到手机');
+                    }
+                }
+                
+                console.log('✓ 存储权限检查通过，继续下载');
+            }
+            
             const response = await fetch(downloadUrl, {
                 headers: {
                     'Authorization': `Bearer ${urlToken}`,
@@ -653,65 +670,223 @@ class VideoPlayer {
         return new Promise((resolve, reject) => {
             console.log('使用5+ API保存文件:', fileName);
             
-            // 将Blob转换为ArrayBuffer
-            const reader = new FileReader();
-            reader.onload = () => {
-                console.log('Blob转换完成，开始写入文件...');
-                const arrayBuffer = reader.result;
+            // 首先检查存储权限
+            this.checkStoragePermission().then((hasPermission) => {
+                if (!hasPermission) {
+                    console.error('✗ 存储权限检查失败，无法写入文件');
+                    reject(new Error('存储权限不足，无法保存文件'));
+                    return;
+                }
                 
-                // 使用_DOC目录（应用文档目录，有写入权限）
-                const filePath = '_doc/' + fileName;
+                console.log('✓ 存储权限检查通过，开始保存文件');
                 
-                plus.io.resolveLocalFileSystemURL('_doc', (entry) => {
-                    console.log('解析_DOC目录成功');
-                    entry.getFile(fileName, { create: true }, (fileEntry) => {
-                        console.log('文件创建成功，开始写入数据...');
-                        fileEntry.createWriter((writer) => {
-                            writer.onwrite = () => {
-                                console.log('✓ 文件写入成功');
-                                const fileUrl = fileEntry.toLocalURL();
-                                console.log('文件已保存到App文件系统:', fileUrl, '文件名:', fileName, '文件大小:', blob.size);
-                                resolve(fileUrl);
-                            };
-                            
-                            writer.onerror = (e) => {
-                                console.error('✗ 文件写入错误:', e);
-                                console.error('写入错误详情:', e.message, e.code);
-                                reject(e);
-                            };
-                            
-                            // 创建Blob并写入
-                            const writeBlob = new Blob([new Uint8Array(arrayBuffer)]);
-                            console.log('开始写入文件数据，大小:', writeBlob.size);
-                            writer.write(writeBlob);
-                            
+                // 将Blob转换为ArrayBuffer
+                const reader = new FileReader();
+                reader.onload = () => {
+                    console.log('Blob转换完成，开始写入文件...');
+                    const arrayBuffer = reader.result;
+                    
+                    // 使用_DOC目录（应用文档目录，有写入权限）
+                    const filePath = '_doc/' + fileName;
+                    
+                    plus.io.resolveLocalFileSystemURL('_doc', (entry) => {
+                        console.log('解析_DOC目录成功');
+                        entry.getFile(fileName, { create: true }, (fileEntry) => {
+                            console.log('文件创建成功，开始写入数据...');
+                            fileEntry.createWriter((writer) => {
+                                writer.onwrite = () => {
+                                    console.log('✓ 文件写入成功');
+                                    const fileUrl = fileEntry.toLocalURL();
+                                    console.log('文件已保存到App文件系统:', fileUrl, '文件名:', fileName, '文件大小:', blob.size);
+                                    resolve(fileUrl);
+                                };
+                                
+                                writer.onerror = (e) => {
+                                    console.error('✗ 文件写入错误:', e);
+                                    console.error('写入错误详情:', e.message, e.code);
+                                    reject(e);
+                                };
+                                
+                                // 创建Blob并写入
+                                const writeBlob = new Blob([new Uint8Array(arrayBuffer)]);
+                                console.log('开始写入文件数据，大小:', writeBlob.size);
+                                
+                                // 添加写入进度监控
+                                writer.onprogress = (e) => {
+                                    console.log('写入进度:', e.loaded, '/', e.total);
+                                };
+                                
+                                writer.write(writeBlob);
+                                
+                            }, (error) => {
+                                console.error('创建文件写入器失败:', error);
+                                reject(error);
+                            });
                         }, (error) => {
-                            console.error('创建文件写入器失败:', error);
+                            console.error('创建文件失败:', error);
                             reject(error);
                         });
                     }, (error) => {
-                        console.error('创建文件失败:', error);
+                        console.error('解析_DOC目录失败:', error);
                         reject(error);
                     });
-                }, (error) => {
-                    console.error('解析_DOC目录失败:', error);
-                    reject(error);
-                });
-            };
-            
-            reader.onerror = (e) => {
-                console.error('✗ Blob转换失败:', e);
-                reject(e);
-            };
-            
-            // 开始读取Blob数据
-            reader.readAsArrayBuffer(blob);
+                };
+                
+                reader.onerror = (e) => {
+                    console.error('✗ Blob转换失败:', e);
+                    reject(e);
+                };
+                
+                // 开始读取Blob数据
+                reader.readAsArrayBuffer(blob);
+                
+            }).catch((permissionError) => {
+                console.error('存储权限检查异常:', permissionError);
+                reject(permissionError);
+            });
         });
     }
-                reject(reader.error);
-            };
+    
+    // 检查存储权限
+    async checkStoragePermission() {
+        return new Promise((resolve) => {
+            if (!this.isAppEnvironment()) {
+                // 浏览器环境，默认有权限（使用Blob URL）
+                console.log('浏览器环境，使用Blob URL，无需存储权限检查');
+                resolve(true);
+                return;
+            }
             
-            reader.readAsArrayBuffer(blob);
+            console.log('开始检查App存储权限...');
+            
+            try {
+                // 检查5+ Runtime API是否可用
+                if (typeof plus === 'undefined' || !plus.io) {
+                    console.error('5+ Runtime API不可用');
+                    resolve(false);
+                    return;
+                }
+                
+                // 尝试访问_DOC目录来检查权限
+                plus.io.resolveLocalFileSystemURL('_doc', (entry) => {
+                    console.log('✓ _DOC目录访问成功，存储权限正常');
+                    
+                    // 进一步检查写入权限：尝试创建一个临时文件
+                    entry.getFile('permission_test.tmp', { create: true }, (fileEntry) => {
+                        fileEntry.createWriter((writer) => {
+                            writer.onwrite = () => {
+                                console.log('✓ 写入权限测试通过');
+                                
+                                // 删除测试文件
+                                fileEntry.remove(() => {
+                                    console.log('测试文件已清理');
+                                    resolve(true);
+                                }, (removeError) => {
+                                    console.warn('测试文件清理失败，但不影响权限判断:', removeError);
+                                    resolve(true);
+                                });
+                            };
+                            
+                            writer.onerror = (writeError) => {
+                                console.error('✗ 写入权限测试失败:', writeError);
+                                resolve(false);
+                            };
+                            
+                            // 写入一个空数据块进行测试
+                            writer.write(new Blob(['test']));
+                            
+                        }, (writerError) => {
+                            console.error('✗ 创建文件写入器失败:', writerError);
+                            resolve(false);
+                        });
+                    }, (fileError) => {
+                        console.error('✗ 创建测试文件失败:', fileError);
+                        resolve(false);
+                    });
+                }, (resolveError) => {
+                    console.error('✗ _DOC目录访问失败:', resolveError);
+                    
+                    // 如果_DOC目录访问失败，尝试使用其他目录
+                    console.log('尝试使用_PRIVATE_DOC目录...');
+                    plus.io.resolveLocalFileSystemURL('_PRIVATE_DOC', (privateEntry) => {
+                        console.log('✓ _PRIVATE_DOC目录访问成功');
+                        resolve(true);
+                    }, (privateError) => {
+                        console.error('✗ _PRIVATE_DOC目录访问失败:', privateError);
+                        resolve(false);
+                    });
+                });
+                
+            } catch (error) {
+                console.error('存储权限检查异常:', error);
+                resolve(false);
+            }
+        });
+    }
+    
+    // 请求存储权限（如果需要）
+    async requestStoragePermission() {
+        return new Promise((resolve) => {
+            if (!this.isAppEnvironment()) {
+                // 浏览器环境，无需请求权限
+                console.log('浏览器环境，无需请求存储权限');
+                resolve(true);
+                return;
+            }
+            
+            console.log('开始请求存储权限...');
+            
+            // 检查是否已经有权限
+            this.checkStoragePermission().then((hasPermission) => {
+                if (hasPermission) {
+                    console.log('✓ 已有存储权限，无需请求');
+                    resolve(true);
+                    return;
+                }
+                
+                console.log('需要请求存储权限');
+                
+                // 在App环境中，权限通常在安装时或首次使用时请求
+                // 这里我们显示一个提示信息，指导用户如何授权
+                const permissionMessage = `
+                    需要存储权限来保存文件到手机。
+                    
+                    请按以下步骤操作：
+                    1. 在系统设置中找到本应用
+                    2. 进入权限管理
+                    3. 开启"存储"或"文件"权限
+                    4. 返回应用重试
+                    
+                    或者，您也可以：
+                    - 重启应用
+                    - 检查系统存储空间是否充足
+                `;
+                
+                // 显示权限请求提示
+                if (typeof plus !== 'undefined' && plus.nativeUI) {
+                    plus.nativeUI.confirm(permissionMessage, (e) => {
+                        if (e.index === 0) {
+                            // 用户点击确定，重新检查权限
+                            console.log('用户确认，重新检查权限...');
+                            setTimeout(() => {
+                                this.checkStoragePermission().then(resolve);
+                            }, 1000);
+                        } else {
+                            console.log('用户取消权限请求');
+                            resolve(false);
+                        }
+                    }, '存储权限请求', ['确定', '取消']);
+                } else {
+                    // 如果没有nativeUI，使用alert
+                    alert(permissionMessage);
+                    console.log('已显示权限请求提示，请用户操作后重试');
+                    resolve(false);
+                }
+                
+            }).catch((error) => {
+                console.error('权限检查失败:', error);
+                resolve(false);
+            });
         });
     }
     
