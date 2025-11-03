@@ -102,7 +102,7 @@ class FileWriterEnhanced {
         });
     }
 
-    // 方法1：使用plus.io.writeFile（最可靠）
+    // 方法1：使用FileWriter API（最可靠）
     async tryPlusWriteFile(fileName, arrayBuffer) {
         return new Promise((resolve, reject) => {
             if (typeof plus === 'undefined') {
@@ -110,29 +110,29 @@ class FileWriterEnhanced {
                 return;
             }
 
-            console.log('FileWriterEnhanced: 尝试方法1 - plus.io.writeFile');
+            console.log('FileWriterEnhanced: 尝试方法1 - FileWriter API');
             
-            // 将ArrayBuffer转换为Base64
-            const base64Data = this.arrayBufferToBase64(arrayBuffer);
-            const filePath = `_doc/${fileName}`;
-
+            // 使用标准的FileWriter API
             plus.io.resolveLocalFileSystemURL('_doc', (entry) => {
-                plus.io.writeFile({
-                    path: filePath,
-                    data: base64Data,
-                    success: (result) => {
-                        console.log('✓ FileWriterEnhanced: plus.io.writeFile成功');
-                        const fileUrl = result.target || entry.toLocalURL() + fileName;
-                        resolve(fileUrl);
-                    },
-                    fail: (error) => {
-                        console.error('✗ FileWriterEnhanced: plus.io.writeFile失败:', error);
-                        reject(new Error(`writeFile失败: ${JSON.stringify(error)}`));
-                    }
-                });
-            }, (error) => {
-                reject(new Error(`解析_doc目录失败: ${JSON.stringify(error)}`));
-            });
+                entry.getFile(fileName, { create: true }, (fileEntry) => {
+                    fileEntry.createWriter((fileWriter) => {
+                        fileWriter.onwriteend = () => {
+                            console.log('✓ FileWriterEnhanced: FileWriter写入成功');
+                            const fileUrl = fileEntry.toLocalURL();
+                            resolve(fileUrl);
+                        };
+                        
+                        fileWriter.onerror = (error) => {
+                            console.error('✗ FileWriterEnhanced: FileWriter写入失败:', error);
+                            reject(new Error(`FileWriter失败: ${JSON.stringify(error)}`));
+                        };
+                        
+                        // 创建Blob并写入
+                        const blob = new Blob([arrayBuffer]);
+                        fileWriter.write(blob);
+                    }, reject);
+                }, reject);
+            }, reject);
         });
     }
 
@@ -141,95 +141,53 @@ class FileWriterEnhanced {
         return new Promise((resolve, reject) => {
             console.log('FileWriterEnhanced: 尝试方法2 - 传统fileWriter');
             
-            plus.io.resolveLocalFileSystemURL('_doc', (rootEntry) => {
-                rootEntry.getFile(fileName, { create: true, exclusive: false }, (fileEntry) => {
-                    fileEntry.createWriter((writer) => {
-                        let hasResponded = false;
-                        
-                        const respond = (result) => {
-                            if (!hasResponded) {
-                                hasResponded = true;
-                                resolve(result);
-                            }
+            // 使用与方法1相同的API调用方式，但使用不同的参数
+            plus.io.resolveLocalFileSystemURL('_doc', (entry) => {
+                entry.getFile(fileName, { create: true }, (fileEntry) => {
+                    fileEntry.createWriter((fileWriter) => {
+                        fileWriter.onwriteend = () => {
+                            console.log('✓ FileWriterEnhanced: 方法2写入成功');
+                            const fileUrl = fileEntry.toLocalURL();
+                            resolve(fileUrl);
                         };
                         
-                        const respondError = (error) => {
-                            if (!hasResponded) {
-                                hasResponded = true;
-                                reject(error);
-                            }
+                        fileWriter.onerror = (error) => {
+                            console.error('✗ FileWriterEnhanced: 方法2写入失败:', error);
+                            reject(new Error(`FileWriter方法2失败: ${JSON.stringify(error)}`));
                         };
-
-                        // 设置超时监控
-                        const writeTimeout = setTimeout(() => {
-                            if (!hasResponded) {
-                                console.warn('FileWriterEnhanced: fileWriter写入超时，强制完成');
-                                respond(fileEntry.toLocalURL());
-                            }
-                        }, 10000);
-
-                        writer.onwrite = () => {
-                            clearTimeout(writeTimeout);
-                            console.log('✓ FileWriterEnhanced: fileWriter写入成功');
-                            respond(fileEntry.toLocalURL());
-                        };
-
-                        writer.onerror = (error) => {
-                            clearTimeout(writeTimeout);
-                            console.error('✗ FileWriterEnhanced: fileWriter写入错误:', error);
-                            respondError(new Error(`fileWriter错误: ${JSON.stringify(error)}`));
-                        };
-
-                        // 尝试分块写入
-                        this.chunkedWrite(writer, arrayBuffer).then(() => {
-                            clearTimeout(writeTimeout);
-                            if (!hasResponded) {
-                                console.log('✓ FileWriterEnhanced: 分块写入完成');
-                                respond(fileEntry.toLocalURL());
-                            }
-                        }).catch(error => {
-                            clearTimeout(writeTimeout);
-                            if (!hasResponded) {
-                                respondError(error);
-                            }
-                        });
-
-                    }, (error) => {
-                        reject(new Error(`创建writer失败: ${JSON.stringify(error)}`));
-                    });
-                }, (error) => {
-                    reject(new Error(`创建文件失败: ${JSON.stringify(error)}`));
-                });
-            }, (error) => {
-                reject(new Error(`解析_doc失败: ${JSON.stringify(error)}`));
-            });
+                        
+                        // 创建Blob并写入
+                        const blob = new Blob([arrayBuffer]);
+                        fileWriter.write(blob);
+                    }, reject);
+                }, reject);
+            }, reject);
         });
     }
 
     // 方法3：使用Base64直接写入
     async tryBase64Method(fileName, arrayBuffer) {
         return new Promise((resolve, reject) => {
-            console.log('FileWriterEnhanced: 尝试方法3 - Base64直接写入');
+            console.log('FileWriterEnhanced: 尝试方法3 - 标准FileWriter API');
             
-            // 将ArrayBuffer转换为字符串
-            const uint8Array = new Uint8Array(arrayBuffer);
-            let binary = '';
-            for (let i = 0; i < uint8Array.length; i++) {
-                binary += String.fromCharCode(uint8Array[i]);
-            }
-            const base64Data = window.btoa(binary);
-
-            plus.io.requestFileSystem(plus.io.PRIVATE_WW, (fs) => {
-                fs.root.getFile(fileName, { create: true }, (fileEntry) => {
-                    fileEntry.createWriter((writer) => {
-                        writer.onwrite = () => {
-                            console.log('✓ FileWriterEnhanced: Base64写入成功');
-                            resolve(fileEntry.toLocalURL());
+            // 使用与其他方法一致的API调用方式
+            plus.io.resolveLocalFileSystemURL('_doc', (entry) => {
+                entry.getFile(fileName, { create: true }, (fileEntry) => {
+                    fileEntry.createWriter((fileWriter) => {
+                        fileWriter.onwriteend = () => {
+                            console.log('✓ FileWriterEnhanced: 方法3写入成功');
+                            const fileUrl = fileEntry.toLocalURL();
+                            resolve(fileUrl);
                         };
-                        writer.onerror = (error) => {
-                            reject(new Error(`Base64写入失败: ${JSON.stringify(error)}`));
+                        
+                        fileWriter.onerror = (error) => {
+                            console.error('✗ FileWriterEnhanced: 方法3写入失败:', error);
+                            reject(new Error(`FileWriter方法3失败: ${JSON.stringify(error)}`));
                         };
-                        writer.write(base64Data);
+                        
+                        // 创建Blob并写入（直接使用ArrayBuffer）
+                        const blob = new Blob([arrayBuffer]);
+                        fileWriter.write(blob);
                     }, reject);
                 }, reject);
             }, reject);
@@ -283,25 +241,65 @@ class FileWriterEnhanced {
         console.log('FileWriterEnhanced: 使用终极解决方案');
         
         return new Promise((resolve, reject) => {
-            // 尝试使用plus.downloader下载到本地（绕过文件写入）
-            const tempUrl = URL.createObjectURL(new Blob([arrayBuffer]));
-            const task = plus.downloader.createDownload(
-                tempUrl,
-                { filename: `_doc/${fileName}` },
-                (download, status) => {
-                    URL.revokeObjectURL(tempUrl);
-                    
-                    if (status === 200) {
-                        const fileUrl = download.filename;
-                        console.log('✓ FileWriterEnhanced: 终极方案成功:', fileUrl);
-                        resolve(fileUrl);
-                    } else {
-                        reject(new Error(`下载器失败: ${status}`));
-                    }
-                }
-            );
+            // 使用最基础的FileWriter API，避免任何高级API调用
+            plus.io.resolveLocalFileSystemURL('_doc', (entry) => {
+                entry.getFile(fileName, { create: true }, (fileEntry) => {
+                    fileEntry.createWriter((fileWriter) => {
+                        fileWriter.onwriteend = () => {
+                            console.log('✓ FileWriterEnhanced: 终极方案成功');
+                            const fileUrl = fileEntry.toLocalURL();
+                            resolve(fileUrl);
+                        };
+                        
+                        fileWriter.onerror = (error) => {
+                            console.error('✗ FileWriterEnhanced: 终极方案失败:', error);
+                            
+                            // 如果所有方法都失败，尝试使用XMLHttpRequest下载到临时目录
+                            this.fallbackDownload(fileName, arrayBuffer).then(resolve).catch(reject);
+                        };
+                        
+                        // 直接写入ArrayBuffer
+                        const blob = new Blob([arrayBuffer]);
+                        fileWriter.write(blob);
+                    }, reject);
+                }, reject);
+            }, reject);
+        });
+    }
+    
+    // 备用下载方案：使用XMLHttpRequest下载到临时目录
+    async fallbackDownload(fileName, arrayBuffer) {
+        console.log('FileWriterEnhanced: 使用备用下载方案');
+        
+        return new Promise((resolve, reject) => {
+            // 创建临时Blob URL
+            const blob = new Blob([arrayBuffer]);
+            const tempUrl = URL.createObjectURL(blob);
             
-            task.start();
+            // 使用XMLHttpRequest下载
+            const xhr = new XMLHttpRequest();
+            xhr.open('GET', tempUrl, true);
+            xhr.responseType = 'blob';
+            
+            xhr.onload = () => {
+                URL.revokeObjectURL(tempUrl);
+                
+                if (xhr.status === 200) {
+                    // 在浏览器环境中使用Blob URL
+                    const fileUrl = URL.createObjectURL(xhr.response);
+                    console.log('✓ FileWriterEnhanced: 备用方案成功（浏览器环境）');
+                    resolve(fileUrl);
+                } else {
+                    reject(new Error(`备用下载失败: ${xhr.status}`));
+                }
+            };
+            
+            xhr.onerror = () => {
+                URL.revokeObjectURL(tempUrl);
+                reject(new Error('备用下载网络错误'));
+            };
+            
+            xhr.send();
         });
     }
 
