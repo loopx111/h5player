@@ -571,9 +571,33 @@ class VideoPlayer {
             
             let localUrl;
             
-            // 使用独立的文件写入模块
-            if (window.fileWriter) {
-                console.log('使用FileWriter模块保存文件');
+            // 优先使用增强版文件写入模块
+            if (window.fileWriterEnhanced) {
+                console.log('使用增强版FileWriterEnhanced模块保存文件');
+                
+                // 从下载URL中提取原始文件名
+                let fileName = fileId;
+                try {
+                    const url = new URL(downloadUrl);
+                    const pathParts = url.pathname.split('/');
+                    const originalFileName = pathParts[pathParts.length - 1];
+                    if (originalFileName && originalFileName.includes('.')) {
+                        fileName = originalFileName;
+                        console.log('使用原始文件名:', fileName);
+                    }
+                } catch (e) {
+                    console.log('无法从URL提取文件名，使用fileId:', fileId);
+                }
+                
+                // 确保文件名有扩展名
+                if (!fileName.includes('.')) {
+                    fileName += '.mp4'; // 默认扩展名
+                }
+                
+                localUrl = await window.fileWriterEnhanced.saveFile(fileName, blob, fileId);
+            } else if (window.fileWriter) {
+                // 回退到基础版文件写入模块
+                console.log('增强版模块未找到，使用基础版FileWriter模块');
                 
                 // 从下载URL中提取原始文件名
                 let fileName = fileId;
@@ -597,7 +621,7 @@ class VideoPlayer {
                 localUrl = await window.fileWriter.saveFile(fileName, blob, fileId);
             } else {
                 // 回退到原来的逻辑
-                console.warn('FileWriter模块未找到，使用回退方案');
+                console.warn('所有文件写入模块都未找到，使用回退方案');
                 
                 if (this.isAppEnvironment()) {
                     localUrl = await this.saveToAppFileSystem(fileId, blob, downloadUrl);
