@@ -526,21 +526,10 @@ class VideoPlayer {
                 throw new Error('下载URL中未找到token参数');
             }
             
-            // 在App环境中，先检查存储权限
+            // 在App环境中，直接使用_doc目录，无需权限检查
             if (this.isAppEnvironment()) {
-                console.log('App环境，检查存储权限...');
-                const hasPermission = await this.checkStoragePermission();
-                
-                if (!hasPermission) {
-                    console.log('存储权限不足，尝试请求权限...');
-                    const permissionGranted = await this.requestStoragePermission();
-                    
-                    if (!permissionGranted) {
-                        throw new Error('存储权限被拒绝，无法保存文件到手机');
-                    }
-                }
-                
-                console.log('✓ 存储权限检查通过，继续下载');
+                console.log('App环境，使用_doc目录保存文件，无需权限检查');
+                console.log('✓ _doc目录是应用私有目录，可直接读写');
             }
             
             const response = await fetch(downloadUrl, {
@@ -665,84 +654,134 @@ class VideoPlayer {
         });
     }
     
-    // 使用5+ Runtime API保存文件
+    // 使用5+ Runtime API保存文件到_doc目录
     async saveFileWithPlusAPI(fileName, blob) {
         return new Promise((resolve, reject) => {
-            console.log('使用5+ API保存文件:', fileName);
+            console.log('使用5+ API保存文件到_doc目录:', fileName);
             
-            // 首先检查存储权限
-            this.checkStoragePermission().then((hasPermission) => {
-                if (!hasPermission) {
-                    console.error('✗ 存储权限检查失败，无法写入文件');
-                    reject(new Error('存储权限不足，无法保存文件'));
-                    return;
-                }
+            // 直接使用_doc目录，无需权限检查
+            console.log('✓ _doc目录无需权限检查，直接保存文件');
+            
+            // 将Blob转换为ArrayBuffer
+            const reader = new FileReader();
+            reader.onload = () => {
+                console.log('Blob转换完成，开始写入_doc目录...');
+                const arrayBuffer = reader.result;
                 
-                console.log('✓ 存储权限检查通过，开始保存文件');
-                
-                // 将Blob转换为ArrayBuffer
-                const reader = new FileReader();
-                reader.onload = () => {
-                    console.log('Blob转换完成，开始写入文件...');
-                    const arrayBuffer = reader.result;
+                // 直接使用_doc目录（应用私有文档目录，无需权限）
+                plus.io.resolveLocalFileSystemURL('_doc', (entry) => {
+                    console.log('解析_doc目录成功');
+                    console.log('_doc目录信息 - 名称:', entry.name, '完整路径:', entry.fullPath);
                     
-                    // 使用_DOC目录（应用文档目录，有写入权限）
-                    const filePath = '_doc/' + fileName;
-                    
-                    plus.io.resolveLocalFileSystemURL('_doc', (entry) => {
-                        console.log('解析_DOC目录成功');
-                        entry.getFile(fileName, { create: true }, (fileEntry) => {
-                            console.log('文件创建成功，开始写入数据...');
-                            fileEntry.createWriter((writer) => {
-                                writer.onwrite = () => {
-                                    console.log('✓ 文件写入成功');
-                                    const fileUrl = fileEntry.toLocalURL();
-                                    console.log('文件已保存到App文件系统:', fileUrl, '文件名:', fileName, '文件大小:', blob.size);
+                    entry.getFile(fileName, { create: true }, (fileEntry) => {
+                        console.log('文件创建成功，开始写入数据...');
+                        fileEntry.createWriter((writer) => {
+                            writer.onwrite = () => {
+                                console.log('✓ 文件写入成功');
+                                const fileUrl = fileEntry.toLocalURL();
+                                console.log('文件已保存到_doc目录:', fileUrl, '文件名:', fileName, '文件大小:', blob.size);
+                                
+                                // 验证文件是否真的保存成功
+                                plus.io.resolveLocalFileSystemURL(fileUrl, (savedFile) => {
+                                    savedFile.file((fileInfo) => {
+                                        console.log('✓ 文件验证成功，实际大小:', fileInfo.size, 'bytes');
+                                        resolve(fileUrl);
+                                    }, (verifyError) => {
+                                        console.warn('文件验证失败，但写入成功:', verifyError);
+                                        resolve(fileUrl);
+                                    });
+                                }, (verifyError) => {
+                                    console.warn('文件URL验证失败，但写入成功:', verifyError);
                                     resolve(fileUrl);
-                                };
+                                });
+                            };
+                            
+                            writer.onerror = (e) => {
+                                console.error('✗ 文件写入错误:', e);
+                                console.error('写入错误详情:', e.message, e.code);
                                 
-                                writer.onerror = (e) => {
-                                    console.error('✗ 文件写入错误:', e);
-                                    console.error('写入错误详情:', e.message, e.code);
-                                    reject(e);
-                                };
-                                
-                                // 创建Blob并写入
-                                const writeBlob = new Blob([new Uint8Array(arrayBuffer)]);
-                                console.log('开始写入文件数据，大小:', writeBlob.size);
-                                
-                                // 添加写入进度监控
-                                writer.onprogress = (e) => {
-                                    console.log('写入进度:', e.loaded, '/', e.total);
-                                };
-                                
-                                writer.write(writeBlob);
-                                
-                            }, (error) => {
-                                console.error('创建文件写入器失败:', error);
-                                reject(error);
-                            });
+                                // 尝试使用更简单的写入方式
+                                console.log('尝试使用备用写入方案...');
+                                this.saveFileWithAlternativeMethod(fileName, arrayBuffer).then(resolve).catch(reject);
+                            };
+                            
+                            // 创建Blob并写入
+                            const writeBlob = new Blob([new Uint8Array(arrayBuffer)]);
+                            console.log('开始写入文件数据，大小:', writeBlob.size);
+                            
+                            // 添加写入进度监控
+                            writer.onprogress = (e) => {
+                                console.log('写入进度:', e.loaded, '/', e.total);
+                            };
+                            
+                            console.log('调用writer.write()...');
+                            writer.write(writeBlob);
+                            
                         }, (error) => {
-                            console.error('创建文件失败:', error);
+                            console.error('创建文件写入器失败:', error);
                             reject(error);
                         });
                     }, (error) => {
-                        console.error('解析_DOC目录失败:', error);
+                        console.error('创建文件失败:', error);
                         reject(error);
                     });
-                };
-                
-                reader.onerror = (e) => {
-                    console.error('✗ Blob转换失败:', e);
-                    reject(e);
-                };
-                
-                // 开始读取Blob数据
-                reader.readAsArrayBuffer(blob);
-                
-            }).catch((permissionError) => {
-                console.error('存储权限检查异常:', permissionError);
-                reject(permissionError);
+                }, (error) => {
+                    console.error('解析_doc目录失败:', error);
+                    
+                    // _doc目录访问失败，可能是5+ API问题
+                    console.error('_doc目录访问异常，检查5+ Runtime环境');
+                    reject(new Error('无法访问_doc目录，请检查5+ Runtime环境'));
+                });
+            };
+            
+            reader.onerror = (e) => {
+                console.error('✗ Blob转换失败:', e);
+                reject(e);
+            };
+            
+            // 开始读取Blob数据
+            reader.readAsArrayBuffer(blob);
+        });
+    }
+    
+    // 备用文件保存方法
+    async saveFileWithAlternativeMethod(fileName, arrayBuffer) {
+        return new Promise((resolve, reject) => {
+            console.log('使用备用方法保存文件:', fileName);
+            
+            // 尝试使用更简单的文件保存方式
+            const fileData = new Uint8Array(arrayBuffer);
+            
+            // 使用plus.io直接写入文件
+            plus.io.resolveLocalFileSystemURL('_doc/' + fileName, (fileEntry) => {
+                fileEntry.createWriter((writer) => {
+                    writer.onwrite = () => {
+                        console.log('✓ 备用方法文件写入成功');
+                        resolve(fileEntry.toLocalURL());
+                    };
+                    writer.onerror = (e) => {
+                        console.error('备用方法写入失败:', e);
+                        reject(e);
+                    };
+                    writer.write(new Blob([fileData]));
+                }, reject);
+            }, () => {
+                // 文件不存在，先创建
+                plus.io.resolveLocalFileSystemURL('_doc', (rootEntry) => {
+                    rootEntry.getFile(fileName, {create: true}, (fileEntry) => {
+                        fileEntry.createWriter((writer) => {
+                            writer.onwrite = () => {
+                                console.log('✓ 备用方法创建并写入成功');
+                                resolve(fileEntry.toLocalURL());
+                            };
+                            writer.onerror = (e) => {
+                                console.error('备用方法创建写入失败:', e);
+                                reject(e);
+                            };
+                            writer.write(new Blob([fileData]));
+                        }, reject);
+                    }, reject);
+                }, reject);
             });
         });
     }
