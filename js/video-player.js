@@ -485,7 +485,14 @@ class VideoPlayer {
     async downloadPlaylistFiles() {
         for (const video of this.playlist) {
             if (video.downloadUrl) {
-                await this.downloadFile(video.downloadUrl, video.id || video.url);
+                const fileId = video.id || video.url;
+                // 检查文件是否已存在，避免重复下载
+                if (!this.localFiles.has(fileId)) {
+                    console.log(`开始下载文件: ${fileId}`);
+                    await this.downloadFile(video.downloadUrl, fileId);
+                } else {
+                    console.log(`文件已存在，跳过下载: ${fileId}`);
+                }
             }
         }
     }
@@ -526,12 +533,14 @@ class VideoPlayer {
                 throw new Error('下载URL中未找到token参数');
             }
             
-            // 在App环境中，直接使用_doc目录，无需权限检查
-            if (this.isAppEnvironment()) {
-                console.log('App环境，使用_doc目录保存文件，无需权限检查');
-                console.log('✓ _doc目录是应用私有目录，可直接读写');
+            // 在App环境中，使用plus.downloader进行下载
+            if (this.isAppEnvironment() && typeof plus.downloader !== 'undefined') {
+                console.log('App环境，使用plus.downloader进行原生下载');
+                return await this.downloadWithPlusDownloader(downloadUrl, fileId, urlToken);
             }
             
+            // 浏览器环境或plus.downloader不可用时，使用fetch方式
+            console.log('使用fetch方式下载文件');
             const response = await fetch(downloadUrl, {
                 headers: {
                     'Authorization': `Bearer ${urlToken}`,
@@ -571,51 +580,16 @@ class VideoPlayer {
             
             let localUrl;
             
-            // 优先使用基础版文件写入模块（临时方案）
-            if (window.fileWriter) {
-                console.log('使用基础版FileWriter模块保存文件（临时方案）');
-                
-                // 从下载URL中提取原始文件名
-                let fileName = fileId;
+            // 浏览器环境：直接使用Blob URL进行播放
+            if (this.isAppEnvironment()) {
                 try {
-                    const url = new URL(downloadUrl);
-                    const pathParts = url.pathname.split('/');
-                    const originalFileName = pathParts[pathParts.length - 1];
-                    if (originalFileName && originalFileName.includes('.')) {
-                        fileName = originalFileName;
-                        console.log('使用原始文件名:', fileName);
-                    }
-                } catch (e) {
-                    console.log('无法从URL提取文件名，使用fileId:', fileId);
-                }
-                
-                // 确保文件名有扩展名
-                if (!fileName.includes('.')) {
-                    fileName += '.mp4'; // 默认扩展名
-                }
-                
-                try {
-                    localUrl = await window.fileWriter.saveFile(fileName, blob, fileId);
-                } catch (writeError) {
-                    console.warn('文件写入失败，使用缓存中的Blob对象:', writeError);
-                    // 文件写入失败时，直接使用Blob URL进行播放
+                    localUrl = await this.saveToAppFileSystem(fileId, blob, downloadUrl);
+                } catch (saveError) {
+                    console.warn('App文件系统保存失败，使用Blob URL:', saveError);
                     localUrl = URL.createObjectURL(blob);
-                    console.log('已创建Blob URL作为临时播放方案:', localUrl);
                 }
             } else {
-                // 回退到原来的逻辑
-                console.warn('基础版文件写入模块未找到，使用Blob URL方案');
-                
-                if (this.isAppEnvironment()) {
-                    try {
-                        localUrl = await this.saveToAppFileSystem(fileId, blob, downloadUrl);
-                    } catch (saveError) {
-                        console.warn('App文件系统保存失败，使用Blob URL:', saveError);
-                        localUrl = URL.createObjectURL(blob);
-                    }
-                } else {
-                    localUrl = URL.createObjectURL(blob);
-                }
+                localUrl = URL.createObjectURL(blob);
             }
             
             // 保存到本地映射
@@ -641,6 +615,129 @@ class VideoPlayer {
             console.error('文件下载失败:', error);
             throw error;
         }
+    }
+    
+    // 使用plus.downloader进行原生下载
+    async downloadWithPlusDownloader(downloadUrl, fileId, urlToken) {
+        return new Promise((resolve, reject) => {
+            console.log('开始使用plus.downloader下载文件:', downloadUrl);
+            
+            // 从下载URL中提取原始文件名
+            let fileName = fileId;
+            try {
+                const url = new URL(downloadUrl);
+                const pathParts = url.pathname.split('/');
+                const originalFileName = pathParts[pathParts.length - 1];
+                if (originalFileName && originalFileName.includes('.')) {
+                    fileName = originalFileName;
+                    console.log('使用原始文件名:', fileName);
+                }
+            } catch (e) {
+                console.log('无法从URL提取文件名，使用fileId:', fileId);
+            }
+            
+            // 确保文件名有扩展名
+            if (!fileName.includes('.')) {
+                fileName += '.mp4'; // 默认扩展名
+            }
+            
+            const filePath = '_doc/' + fileName;
+            console.log('文件保存路径:', filePath);
+            
+            let hasResponded = false;
+            const timeout = setTimeout(() => {
+                if (!hasResponded) {
+                    hasResponded = true;
+                    console.error('plus.downloader下载超时 (30秒)');
+                    reject(new Error('下载超时'));
+                }
+            }, 30000);
+            
+            try {
+                // 创建下载任务
+                const task = plus.downloader.createDownload(
+                    downloadUrl,
+                    { 
+                        filename: filePath,
+                        timeout: 30,
+                        retry: 2,
+                        retryInterval: 5,
+                        method: 'GET',
+                        headers: {
+                            'Authorization': `Bearer ${urlToken}`,
+                            'Content-Type': 'application/json'
+                        }
+                    },
+                    (download, status) => {
+                        clearTimeout(timeout);
+                        
+                        if (!hasResponded) {
+                            hasResponded = true;
+                            
+                            if (status === 200) {
+                                console.log('✓ plus.downloader下载成功，状态码:', status);
+                                console.log('文件大小:', download.downloadedSize, 'bytes');
+                                console.log('保存路径:', download.filename);
+                                
+                                // 验证文件是否真的存在
+                                plus.io.resolveLocalFileSystemURL(download.filename, (entry) => {
+                                    entry.file((file) => {
+                                        console.log('✓ 文件验证成功，实际大小:', file.size, 'bytes');
+                                        const fileUrl = entry.toLocalURL();
+                                        
+                                        // 保存到本地映射
+                                        this.localFiles.set(fileId, fileUrl);
+                                        this.saveLocalFiles();
+                                        
+                                        console.log('文件下载完成:', fileId, fileUrl);
+                                        resolve(fileUrl);
+                                    }, (verifyError) => {
+                                        console.warn('文件验证失败，但下载成功:', verifyError);
+                                        const fileUrl = entry.toLocalURL();
+                                        this.localFiles.set(fileId, fileUrl);
+                                        this.saveLocalFiles();
+                                        resolve(fileUrl);
+                                    });
+                                }, (verifyError) => {
+                                    console.warn('文件URL验证失败，但下载成功:', verifyError);
+                                    const fileUrl = download.filename;
+                                    this.localFiles.set(fileId, fileUrl);
+                                    this.saveLocalFiles();
+                                    resolve(fileUrl);
+                                });
+                            } else {
+                                console.error('✗ plus.downloader下载失败，状态码:', status);
+                                reject(new Error(`下载失败: ${status}`));
+                            }
+                        }
+                    }
+                );
+                
+                if (task) {
+                    // 添加进度监听
+                    task.addEventListener('statechanged', (download, status) => {
+                        console.log('下载状态:', status, '已下载:', download.downloadedSize, 'bytes');
+                        
+                        if (download.totalSize > 0) {
+                            const percent = Math.round((download.downloadedSize / download.totalSize) * 100);
+                            console.log(`下载进度: ${percent}%`);
+                        }
+                    });
+                    
+                    // 开始下载
+                    task.start();
+                    console.log('✓ plus.downloader下载任务已启动');
+                } else {
+                    clearTimeout(timeout);
+                    console.error('✗ 创建plus.downloader下载任务失败');
+                    reject(new Error('创建下载任务失败'));
+                }
+            } catch (error) {
+                clearTimeout(timeout);
+                console.error('✗ plus.downloader下载过程中出错:', error);
+                reject(error);
+            }
+        });
     }
     
     // 保存文件到App文件系统
@@ -904,6 +1001,10 @@ class VideoPlayer {
             });
         });
     }
+            
+
+            
+
     
     // 检查存储权限
     async checkStoragePermission() {
@@ -974,9 +1075,8 @@ class VideoPlayer {
                         resolve(false);
                     });
                 });
-                
             } catch (error) {
-                console.error('存储权限检查异常:', error);
+                console.error('存储权限检查过程中出错:', error);
                 resolve(false);
             }
         });
@@ -1557,14 +1657,25 @@ class VideoPlayer {
                     // 如果静音播放也失败，尝试其他方案
                     console.log('尝试其他播放方案...');
                     
-                    // 尝试从网络播放
+                    // 尝试从网络播放，根据文件类型选择正确的播放方式
                     const currentVideo = this.playlist[this.playOrder[this.currentIndex]];
                     if (currentVideo && currentVideo.downloadUrl) {
                         console.log('尝试从网络播放:', currentVideo.downloadUrl);
-                        this.currentPlayer.src = currentVideo.downloadUrl;
-                        this.currentPlayer.play().catch(networkError => {
-                            console.error('网络播放失败:', networkError);
-                        });
+                        
+                        // 检测文件格式
+                        const fileFormat = this.getFileFormat(currentVideo.downloadUrl);
+                        console.log('检测到文件格式:', fileFormat);
+                        
+                        if (fileFormat === 'image') {
+                            // 如果是图片，使用图片显示方式
+                            this.showImage(currentVideo.downloadUrl);
+                        } else {
+                            // 如果是视频，尝试视频播放
+                            this.currentPlayer.src = currentVideo.downloadUrl;
+                            this.currentPlayer.play().catch(networkError => {
+                                console.error('网络播放失败:', networkError);
+                            });
+                        }
                     }
                 }
             });

@@ -57,6 +57,11 @@
             <div class="status-dot" id="status-dot"></div>
             <span id="status-text">连接中...</span>
         </div>
+        
+        <!-- 测试入口按钮（开发模式显示） -->
+        <div id="test-entry" class="test-entry hidden">
+            <button id="test-download-btn" class="test-btn">测试下载功能</button>
+        </div>
     </div>
 
     <!-- 性能监控面板（开发模式显示） -->
@@ -76,6 +81,34 @@
     </div>
 
     <script>
+        // 测试入口功能
+        document.addEventListener('DOMContentLoaded', function() {
+            const testEntry = document.getElementById('test-entry');
+            const testBtn = document.getElementById('test-download-btn');
+            
+            // 开发模式下显示测试按钮
+            if (window.location.href.indexOf('debug=true') > -1 || typeof plus === 'undefined') {
+                testEntry.classList.remove('hidden');
+            }
+            
+            // 测试按钮点击事件
+            testBtn.addEventListener('click', function() {
+                console.log('测试按钮被点击');
+                console.log('plus对象是否存在:', typeof plus !== 'undefined');
+                
+                // 跳转到测试页面
+                if (typeof plus !== 'undefined') {
+                    console.log('App环境中跳转');
+                    // App环境中直接修改当前webview的URL
+                    window.location.href = 'test-downloader.html';
+                } else {
+                    console.log('浏览器环境中跳转');
+                    // 浏览器环境中直接跳转
+                    window.location.href = 'test-downloader.html';
+                }
+            });
+        });
+        
         // 内联配置，避免CORS问题
         window.AD_SCREEN_CONFIG = {
             "mqtt": {
@@ -116,8 +149,6 @@
     
     <!-- 使用CDN引入真实的MQTT.js库 -->
     <script src="https://unpkg.com/mqtt@4.3.7/dist/mqtt.min.js"></script>
-    <script src="js/file-writer-enhanced.js"></script>
-    <script src="js/file-writer.js"></script>
     <script src="js/cache-manager.js"></script>
     <script src="js/video-player.js"></script>
     <script src="js/mqtt-client.js"></script>

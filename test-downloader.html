@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>plus.downloader 网络下载功能测试</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .test-section {
+            margin: 20px 0;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        button:disabled {
+            background-color: #6c757d;
+            cursor: not-allowed;
+        }
+        .log {
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 5px;
+            padding: 10px;
+            margin-top: 10px;
+            max-height: 300px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        .success {
+            color: #28a745;
+        }
+        .error {
+            color: #dc3545;
+        }
+        .info {
+            color: #17a2b8;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>plus.downloader 网络下载功能测试</h1>
+        
+        <div class="test-section">
+            <h3>1. 环境检测</h3>
+            <button onclick="checkEnvironment()">检测运行环境</button>
+            <div id="env-log" class="log"></div>
+        </div>
+        
+        <div class="test-section">
+            <h3>2. API可用性测试</h3>
+            <button onclick="checkAPIAvailability()">检测plus.downloader API</button>
+            <div id="api-log" class="log"></div>
+        </div>
+        
+        <div class="test-section">
+            <h3>3. 网络下载测试</h3>
+            <div>
+                <label>测试URL: </label>
+                <select id="test-url">
+                    <option value="https://httpbin.org/image/jpeg">小图片文件 (JPEG)</option>
+                    <option value="https://httpbin.org/image/png">小图片文件 (PNG)</option>
+                    <option value="https://httpbin.org/bytes/1024">1KB测试数据</option>
+                    <option value="https://httpbin.org/bytes/10240">10KB测试数据</option>
+                </select>
+            </div>
+            <button onclick="testNetworkDownload()">开始网络下载测试</button>
+            <div id="download-log" class="log"></div>
+        </div>
+        
+        <div class="test-section">
+            <h3>4. 文件验证</h3>
+            <button onclick="verifyDownloadedFile()">验证下载的文件</button>
+            <div id="verify-log" class="log"></div>
+        </div>
+        
+        <div class="test-section">
+            <h3>5. 综合测试</h3>
+            <button onclick="runCompleteTest()">运行完整测试套件</button>
+            <div id="complete-log" class="log"></div>
+        </div>
+    </div>
+
+    <script>
+        let currentTestFile = '';
+        
+        function logToElement(elementId, message, className = '') {
+            const element = document.getElementById(elementId);
+            const timestamp = new Date().toLocaleTimeString();
+            const logEntry = document.createElement('div');
+            logEntry.innerHTML = `<span class="${className}">[${timestamp}] ${message}</span>`;
+            element.appendChild(logEntry);
+            element.scrollTop = element.scrollHeight;
+        }
+        
+        function clearLog(elementId) {
+            document.getElementById(elementId).innerHTML = '';
+        }
+        
+        // 1. 环境检测
+        function checkEnvironment() {
+            clearLog('env-log');
+            logToElement('env-log', '开始环境检测...', 'info');
+            
+            // 检测是否在HBuilderX App环境中
+            if (typeof plus !== 'undefined') {
+                logToElement('env-log', '✓ 检测到HBuilderX 5+ Runtime环境', 'success');
+                logToElement('env-log', `运行环境: ${plus.os.name} ${plus.os.version}`, 'info');
+                logToElement('env-log', `设备型号: ${plus.device.model || '未知'}`, 'info');
+            } else {
+                logToElement('env-log', '✗ 未检测到HBuilderX 5+ Runtime环境', 'error');
+                logToElement('env-log', '⚠️ 请在HBuilderX App环境中运行此测试', 'error');
+            }
+            
+            // 检测网络状态
+            if (navigator.onLine) {
+                logToElement('env-log', '✓ 网络连接正常', 'success');
+            } else {
+                logToElement('env-log', '✗ 网络连接不可用', 'error');
+            }
+        }
+        
+        // 2. API可用性测试
+        function checkAPIAvailability() {
+            clearLog('api-log');
+            logToElement('api-log', '开始检测plus.downloader API可用性...', 'info');
+            
+            if (typeof plus === 'undefined') {
+                logToElement('api-log', '✗ plus对象未定义', 'error');
+                return;
+            }
+            
+            if (typeof plus.downloader === 'undefined') {
+                logToElement('api-log', '✗ plus.downloader API不可用', 'error');
+                return;
+            }
+            
+            logToElement('api-log', '✓ plus.downloader API可用', 'success');
+            
+            // 进一步检测具体方法
+            try {
+                if (typeof plus.downloader.createDownload === 'function') {
+                    logToElement('api-log', '✓ plus.downloader.createDownload方法可用', 'success');
+                } else {
+                    logToElement('api-log', '✗ plus.downloader.createDownload方法不可用', 'error');
+                }
+            } catch (error) {
+                logToElement('api-log', `✗ 检测createDownload方法时出错: ${error.message}`, 'error');
+            }
+        }
+        
+        // 3. 网络下载测试
+        function testNetworkDownload() {
+            clearLog('download-log');
+            const testUrl = document.getElementById('test-url').value;
+            currentTestFile = `test_download_${Date.now()}.tmp`;
+            
+            logToElement('download-log', `开始网络下载测试...`, 'info');
+            logToElement('download-log', `测试URL: ${testUrl}`, 'info');
+            logToElement('download-log', `保存文件: _doc/${currentTestFile}`, 'info');
+            
+            if (typeof plus === 'undefined' || typeof plus.downloader === 'undefined') {
+                logToElement('download-log', '✗ plus.downloader API不可用', 'error');
+                return;
+            }
+            
+            let hasResponded = false;
+            const timeout = setTimeout(() => {
+                if (!hasResponded) {
+                    hasResponded = true;
+                    logToElement('download-log', '✗ 下载超时 (30秒)', 'error');
+                }
+            }, 30000);
+            
+            try {
+                const task = plus.downloader.createDownload(
+                    testUrl,
+                    { 
+                        filename: '_doc/' + currentTestFile,
+                        timeout: 30,
+                        retry: 2,
+                        retryInterval: 5
+                    },
+                    (download, status) => {
+                        clearTimeout(timeout);
+                        
+                        if (!hasResponded) {
+                            hasResponded = true;
+                            
+                            if (status === 200) {
+                                logToElement('download-log', `✓ 下载成功，状态码: ${status}`, 'success');
+                                logToElement('download-log', `文件大小: ${download.downloadedSize} bytes`, 'info');
+                                logToElement('download-log', `保存路径: ${download.filename}`, 'info');
+                            } else {
+                                logToElement('download-log', `✗ 下载失败，状态码: ${status}`, 'error');
+                            }
+                        }
+                    }
+                );
+                
+                if (task) {
+                    // 添加进度监听
+                    task.addEventListener('statechanged', (download, status) => {
+                        logToElement('download-log', `下载状态: ${status}, 已下载: ${download.downloadedSize} bytes`, 'info');
+                        
+                        if (download.totalSize > 0) {
+                            const percent = Math.round((download.downloadedSize / download.totalSize) * 100);
+                            logToElement('download-log', `下载进度: ${percent}%`, 'info');
+                        }
+                    });
+                    
+                    task.start();
+                    logToElement('download-log', '✓ 下载任务已启动', 'info');
+                } else {
+                    clearTimeout(timeout);
+                    logToElement('download-log', '✗ 创建下载任务失败', 'error');
+                }
+            } catch (error) {
+                clearTimeout(timeout);
+                logToElement('download-log', `✗ 下载过程中出错: ${error.message}`, 'error');
+            }
+        }
+        
+        // 4. 文件验证
+        function verifyDownloadedFile() {
+            clearLog('verify-log');
+            
+            if (!currentTestFile) {
+                logToElement('verify-log', '⚠️ 请先运行网络下载测试', 'error');
+                return;
+            }
+            
+            logToElement('verify-log', `开始验证下载的文件: _doc/${currentTestFile}`, 'info');
+            
+            if (typeof plus === 'undefined') {
+                logToElement('verify-log', '✗ plus API不可用', 'error');
+                return;
+            }
+            
+            plus.io.resolveLocalFileSystemURL('_doc/' + currentTestFile, (entry) => {
+                entry.file((file) => {
+                    logToElement('verify-log', `✓ 文件验证成功`, 'success');
+                    logToElement('verify-log', `文件名: ${entry.name}`, 'info');
+                    logToElement('verify-log', `文件大小: ${file.size} bytes`, 'info');
+                    logToElement('verify-log', `文件类型: ${file.type || '未知'}`, 'info');
+                    logToElement('verify-log', `最后修改: ${new Date(file.lastModified).toLocaleString()}`, 'info');
+                }, (error) => {
+                    logToElement('verify-log', `✗ 文件读取失败: ${JSON.stringify(error)}`, 'error');
+                });
+            }, (error) => {
+                logToElement('verify-log', `✗ 文件不存在或无法访问: ${JSON.stringify(error)}`, 'error');
+            });
+        }
+        
+        // 5. 综合测试
+        function runCompleteTest() {
+            clearLog('complete-log');
+            
+            async function runTests() {
+                logToElement('complete-log', '开始运行完整测试套件...', 'info');
+                
+                // 测试1: 环境检测
+                logToElement('complete-log', '=== 测试1: 环境检测 ===', 'info');
+                if (typeof plus === 'undefined') {
+                    logToElement('complete-log', '✗ 测试失败: 不在App环境中', 'error');
+                    return;
+                }
+                logToElement('complete-log', '✓ 环境检测通过', 'success');
+                
+                // 测试2: API可用性
+                logToElement('complete-log', '=== 测试2: API可用性 ===', 'info');
+                if (typeof plus.downloader === 'undefined') {
+                    logToElement('complete-log', '✗ plus.downloader不可用', 'error');
+                    return;
+                }
+                logToElement('complete-log', '✓ API可用性通过', 'success');
+                
+                // 测试3: 网络下载
+                logToElement('complete-log', '=== 测试3: 网络下载 ===', 'info');
+                await new Promise((resolve) => {
+                    const testUrl = 'https://httpbin.org/image/jpeg';
+                    currentTestFile = `complete_test_${Date.now()}.jpg`;
+                    
+                    let hasResponded = false;
+                    const timeout = setTimeout(() => {
+                        if (!hasResponded) {
+                            hasResponded = true;
+                            logToElement('complete-log', '✗ 下载超时', 'error');
+                            resolve();
+                        }
+                    }, 30000);
+                    
+                    const task = plus.downloader.createDownload(
+                        testUrl,
+                        { 
+                            filename: '_doc/' + currentTestFile,
+                            timeout: 30
+                        },
+                        (download, status) => {
+                            clearTimeout(timeout);
+                            
+                            if (!hasResponded) {
+                                hasResponded = true;
+                                
+                                if (status === 200) {
+                                    logToElement('complete-log', '✓ 网络下载测试通过', 'success');
+                                } else {
+                                    logToElement('complete-log', `✗ 网络下载失败: ${status}`, 'error');
+                                }
+                                resolve();
+                            }
+                        }
+                    );
+                    
+                    if (task) {
+                        task.start();
+                    } else {
+                        clearTimeout(timeout);
+                        logToElement('complete-log', '✗ 创建下载任务失败', 'error');
+                        resolve();
+                    }
+                });
+                
+                logToElement('complete-log', '=== 测试完成 ===', 'info');
+                logToElement('complete-log', '所有测试执行完毕', 'success');
+            }
+            
+            runTests();
+        }
+        
+        // 页面加载时自动检测环境
+        window.onload = function() {
+            checkEnvironment();
+            checkAPIAvailability();
+        };
+    </script>
+</body>
+</html>
