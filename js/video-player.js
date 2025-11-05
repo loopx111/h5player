@@ -1,11 +1,24 @@
 console.log('开始加载video-player.js文件');
 class VideoPlayer {
     constructor() {
+        console.log('初始化VideoPlayer...');
+        
+        // 获取视频元素
         this.video1 = document.getElementById('video1');
         this.video2 = document.getElementById('video2');
+        
+        console.log('视频元素获取结果:', {
+            video1: this.video1 ? '成功' : '失败',
+            video2: this.video2 ? '成功' : '失败'
+        });
+        
+        // 设置默认播放器
         this.currentPlayer = this.video1;
         this.nextPlayer = this.video2;
         this.isSwitching = false;
+        
+        // 初始化播放器状态
+        this.initializeVideoPlayers();
         
         // 播放列表和状态
         this.playlist = [];
@@ -25,6 +38,11 @@ class VideoPlayer {
         this.imageContainer = document.getElementById('image-container');
         this.imageDisplay = document.getElementById('image-display');
         
+        console.log('图片元素获取结果:', {
+            imageContainer: this.imageContainer ? '成功' : '失败',
+            imageDisplay: this.imageDisplay ? '成功' : '失败'
+        });
+        
         // 支持的图片格式
         this.supportedImageFormats = ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp'];
         this.supportedVideoFormats = ['mp4', 'webm', 'ogg', 'mov', 'avi'];
@@ -39,6 +57,70 @@ class VideoPlayer {
         this.initEventListeners();
         this.startPerformanceMonitoring();
         this.loadLocalPlaylist(); // 加载本地播放列表
+    }
+    
+    // 初始化播放器状态
+    initializeVideoPlayers() {
+        console.log('初始化播放器状态...');
+        
+        // 确保两个播放器都可见
+        if (this.video1 && this.video2) {
+            this.video1.classList.remove('hidden');
+            this.video2.classList.remove('hidden');
+            
+            // 设置当前播放器为活跃状态
+            this.video1.classList.add('active');
+            this.video1.classList.remove('inactive');
+            
+            // 设置下一个播放器为非活跃状态
+            this.video2.classList.add('inactive');
+            this.video2.classList.remove('active');
+            
+            // 设置视频属性
+            [this.video1, this.video2].forEach(video => {
+                video.muted = true;
+                video.playsInline = true;
+                video.autoplay = true;
+                video.loop = false;
+                video.volume = 0.8;
+            });
+            
+            console.log('播放器初始化完成');
+        } else {
+            console.error('播放器元素未找到，初始化失败');
+        }
+    }
+    
+    // 初始化播放器状态
+    initializeVideoPlayers() {
+        console.log('初始化播放器状态...');
+        
+        // 确保两个播放器都可见
+        if (this.video1 && this.video2) {
+            this.video1.classList.remove('hidden');
+            this.video2.classList.remove('hidden');
+            
+            // 设置当前播放器为活跃状态
+            this.video1.classList.add('active');
+            this.video1.classList.remove('inactive');
+            
+            // 设置下一个播放器为非活跃状态
+            this.video2.classList.add('inactive');
+            this.video2.classList.remove('active');
+            
+            // 设置视频属性
+            [this.video1, this.video2].forEach(video => {
+                video.muted = true;
+                video.playsInline = true;
+                video.autoplay = true;
+                video.loop = false;
+                video.volume = 0.8;
+            });
+            
+            console.log('播放器初始化完成');
+        } else {
+            console.error('播放器元素未找到，初始化失败');
+        }
     }
     
     initEventListeners() {
@@ -449,6 +531,13 @@ class VideoPlayer {
     // 清空本地文件
     async clearLocalFiles() {
         try {
+            console.log('开始清空本地文件...');
+            
+            // 在App环境中删除物理文件
+            if (this.isAppEnvironment()) {
+                await this.deleteAppFiles();
+            }
+            
             // 释放所有本地文件URL
             this.localFiles.forEach(url => {
                 if (url.startsWith('blob:')) {
@@ -481,6 +570,95 @@ class VideoPlayer {
         }
     }
     
+    // 删除App环境中的物理文件
+    async deleteAppFiles() {
+        return new Promise((resolve) => {
+            if (!this.isAppEnvironment()) {
+                console.log('非App环境，跳过物理文件删除');
+                resolve();
+                return;
+            }
+            
+            console.log('开始删除App环境中的物理文件...');
+            
+            let totalDeleted = 0;
+            const directoriesToClean = ['_doc/downloads', '_downloads', '_doc'];
+            let currentDirIndex = 0;
+            
+            const cleanNextDirectory = () => {
+                if (currentDirIndex >= directoriesToClean.length) {
+                    console.log(`所有目录清理完成，共删除${totalDeleted}个文件`);
+                    resolve();
+                    return;
+                }
+                
+                const directory = directoriesToClean[currentDirIndex];
+                console.log(`清理目录: ${directory}`);
+                
+                plus.io.resolveLocalFileSystemURL(directory, (entry) => {
+                    const directoryReader = entry.createReader();
+                    directoryReader.readEntries((entries) => {
+                        let filesDeleted = 0;
+                        const totalFiles = entries.length;
+                        
+                        if (totalFiles === 0) {
+                            console.log(`${directory}目录为空，无需删除`);
+                            currentDirIndex++;
+                            cleanNextDirectory();
+                            return;
+                        }
+                        
+                        console.log(`在${directory}目录中发现${totalFiles}个文件需要删除`);
+                        
+                        const deleteNextFile = (index) => {
+                            if (index >= totalFiles) {
+                                console.log(`${directory}目录清理完成，删除${filesDeleted}个文件`);
+                                totalDeleted += filesDeleted;
+                                currentDirIndex++;
+                                cleanNextDirectory();
+                                return;
+                            }
+                            
+                            const fileEntry = entries[index];
+                            // 只删除视频文件（.mp4, .avi, .mov等）
+                            if (fileEntry.isFile && this.isVideoFile(fileEntry.name)) {
+                                fileEntry.remove(() => {
+                                    filesDeleted++;
+                                    console.log(`已删除文件: ${fileEntry.name}`);
+                                    deleteNextFile(index + 1);
+                                }, (error) => {
+                                    console.warn(`删除文件失败: ${fileEntry.name}`, error);
+                                    deleteNextFile(index + 1);
+                                });
+                            } else {
+                                // 跳过非视频文件
+                                deleteNextFile(index + 1);
+                            }
+                        };
+                        
+                        deleteNextFile(0);
+                    }, (error) => {
+                        console.warn(`读取${directory}目录失败:`, error);
+                        currentDirIndex++;
+                        cleanNextDirectory();
+                    });
+                }, (error) => {
+                    console.log(`${directory}目录不存在，无需删除`);
+                    currentDirIndex++;
+                    cleanNextDirectory();
+                });
+            };
+            
+            cleanNextDirectory();
+        });
+    }
+    
+    // 检查是否为视频文件
+    isVideoFile(filename) {
+        const videoExtensions = ['.mp4', '.avi', '.mov', '.wmv', '.flv', '.mkv', '.webm', '.m4v'];
+        return videoExtensions.some(ext => filename.toLowerCase().endsWith(ext));
+    }
+    
     // 下载播放列表中的所有文件
     async downloadPlaylistFiles() {
         for (const video of this.playlist) {
@@ -506,10 +684,9 @@ class VideoPlayer {
     getAppFilePath(fileId) {
         if (!this.isAppEnvironment()) return null;
         
-        // 使用H5+ API获取应用私有目录
-        const basePath = plus.io.PRIVATE_WWW;
+        // 统一使用_doc/downloads目录
         const fileName = `${fileId}.mp4`; // 假设都是mp4文件
-        return `${basePath}downloads/${fileName}`;
+        return `_doc/downloads/${fileName}`;
     }
     
     // 下载单个文件（兼容浏览器和App环境）
@@ -1954,9 +2131,18 @@ class VideoPlayer {
             this.imageContainer.classList.add('hidden');
         }
         
-        // 显示视频播放器
-        if (this.currentPlayer) {
+        // 确保两个播放器都显示
+        if (this.currentPlayer && this.nextPlayer) {
             this.currentPlayer.classList.remove('hidden');
+            this.nextPlayer.classList.remove('hidden');
+            
+            // 设置当前播放器为活跃状态
+            this.currentPlayer.classList.add('active');
+            this.currentPlayer.classList.remove('inactive');
+            
+            // 设置下一个播放器为非活跃状态
+            this.nextPlayer.classList.add('inactive');
+            this.nextPlayer.classList.remove('active');
             
             // 检查是否需要更新视频源
             if (this.currentPlayer.src !== url) {
@@ -1965,18 +2151,31 @@ class VideoPlayer {
                 // 设置视频属性
                 this.currentPlayer.muted = true; // 默认静音
                 this.currentPlayer.playsInline = true;
+                this.currentPlayer.autoplay = true;
                 
-                // 等待视频加载完成后再播放
+                // 清除之前的事件监听器
+                this.currentPlayer.onloadeddata = null;
+                this.currentPlayer.oncanplay = null;
+                
+                // 添加新的加载事件监听器
                 this.currentPlayer.onloadeddata = () => {
+                    console.log('视频数据已加载，可以开始播放');
                     this.playVideoSafely();
+                };
+                
+                this.currentPlayer.oncanplay = () => {
+                    console.log('视频可以播放了');
+                    this.hideLoading();
                 };
                 
                 // 如果视频已经加载完成，直接播放
                 if (this.currentPlayer.readyState >= 3) {
+                    console.log('视频已准备就绪，直接播放');
                     this.playVideoSafely();
                 }
             } else {
                 // 如果视频源相同，直接播放
+                console.log('视频源相同，直接播放');
                 this.playVideoSafely();
             }
         }
@@ -1984,30 +2183,91 @@ class VideoPlayer {
     
     // 安全播放视频（避免重复播放请求）
     playVideoSafely() {
-        if (this.currentPlayer.paused) {
-            this.currentPlayer.play().then(() => {
-                console.log('视频播放成功');
-                this.hideLoading();
-                
-                // 设置用户交互监听以激活声音
-                this.setupUserInteractionForAudio();
-                
-                // 开始播放监控
-                this.startPlaybackMonitoring();
-                
-            }).catch(error => {
-                // 如果是播放请求被中断的错误，忽略它（视频可能已经在播放）
-                if (error.name === 'AbortError' && error.message.includes('interrupted by a new load request')) {
-                    console.log('播放请求被中断，视频可能已经在播放中');
+        console.log('开始安全播放视频，当前播放器状态:', {
+            paused: this.currentPlayer.paused,
+            readyState: this.currentPlayer.readyState,
+            currentTime: this.currentPlayer.currentTime
+        });
+        
+        // 确保视频元素可见
+        this.currentPlayer.classList.remove('hidden');
+        this.currentPlayer.classList.add('active');
+        
+        // 设置视频属性确保正确显示
+        this.currentPlayer.muted = true;
+        this.currentPlayer.playsInline = true;
+        this.currentPlayer.autoplay = true;
+        
+        // 如果视频已经加载到可以播放的状态
+        if (this.currentPlayer.readyState >= 3) {
+            console.log('视频已准备就绪，尝试播放');
+            
+            if (this.currentPlayer.paused) {
+                this.currentPlayer.play().then(() => {
+                    console.log('视频播放成功');
                     this.hideLoading();
-                } else {
-                    console.error('视频播放失败:', error);
-                    this.showError(`视频播放失败: ${error.message}`);
-                }
-            });
+                    
+                    // 设置用户交互监听以激活声音
+                    this.setupUserInteractionForAudio();
+                    
+                    // 开始播放监控
+                    this.startPlaybackMonitoring();
+                    
+                    // 触发播放成功事件
+                    window.dispatchEvent(new CustomEvent('video:playing', {
+                        detail: {
+                            src: this.currentPlayer.src,
+                            timestamp: Date.now(),
+                            duration: this.currentPlayer.duration
+                        }
+                    }));
+                    
+                }).catch(error => {
+                    // 如果是播放请求被中断的错误，忽略它（视频可能已经在播放）
+                    if (error.name === 'AbortError' && error.message.includes('interrupted by a new load request')) {
+                        console.log('播放请求被中断，视频可能已经在播放中');
+                        this.hideLoading();
+                    } else {
+                        console.error('视频播放失败:', error);
+                        
+                        // 尝试静音播放
+                        console.log('尝试静音播放...');
+                        this.currentPlayer.muted = true;
+                        this.currentPlayer.play().then(() => {
+                            console.log('静音播放成功');
+                            this.hideLoading();
+                        }).catch(mutedError => {
+                            console.error('静音播放也失败:', mutedError);
+                            this.showError(`视频播放失败: ${error.message}`);
+                        });
+                    }
+                });
+            } else {
+                console.log('视频已经在播放中');
+                this.hideLoading();
+            }
         } else {
-            console.log('视频已经在播放中');
-            this.hideLoading();
+            console.log('视频尚未准备就绪，等待加载完成');
+            
+            // 添加加载事件监听器
+            const onCanPlay = () => {
+                console.log('视频可以播放了，开始播放');
+                this.currentPlayer.removeEventListener('canplay', onCanPlay);
+                this.playVideoSafely();
+            };
+            
+            this.currentPlayer.addEventListener('canplay', onCanPlay);
+            
+            // 设置超时，防止无限等待
+            setTimeout(() => {
+                this.currentPlayer.removeEventListener('canplay', onCanPlay);
+                if (this.currentPlayer.readyState < 3) {
+                    console.warn('视频加载超时，尝试强制播放');
+                    this.currentPlayer.play().catch(error => {
+                        console.error('强制播放失败:', error);
+                    });
+                }
+            }, 10000); // 10秒超时
         }
     }
     
